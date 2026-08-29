@@ -24,11 +24,14 @@
  */
 package com.vividflash.betterdriftnet;
 
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
+import net.runelite.client.config.Units;
 
 @ConfigGroup("betterdriftnet")
 public interface BetterDriftNetConfig extends Config
@@ -43,11 +46,101 @@ public interface BetterDriftNetConfig extends Config
 
     @ConfigSection(
         name = "Nets",
-        description = "Harvest gate and net highlights.",
+        description = "Harvest gate and fish shoals.",
         position = 1,
         closedByDefault = true
     )
     String netsSection = "netsSection";
+
+    @ConfigItem(
+        keyName = "hideTaggedFish",
+        name = "Hide tagged fish",
+        description = "A tagged shoal is not drawn and has no menu entries until its tag expires.",
+        section = netsSection,
+        position = 2
+    )
+    default boolean hideTaggedFish()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "taggedFishMarker",
+        name = "Tagged fish marker",
+        description = "What to draw where a hidden shoal is.",
+        section = netsSection,
+        position = 3
+    )
+    default TaggedFishMarker taggedFishMarker()
+    {
+        return TaggedFishMarker.HULL;
+    }
+
+    @Alpha
+    @ConfigItem(
+        keyName = "taggedFishColour",
+        name = "Tagged fish colour",
+        description = "Marker colour.",
+        section = netsSection,
+        position = 4
+    )
+    default Color taggedFishColour()
+    {
+        return new Color(255, 255, 255, 120);
+    }
+
+    @ConfigItem(
+        keyName = "prioritizeUntaggedFish",
+        name = "Prioritize untagged fish",
+        description = "Where shoals overlap, the untagged one takes left-click.",
+        section = netsSection,
+        position = 5
+    )
+    default boolean prioritizeUntaggedFish()
+    {
+        return false;
+    }
+
+
+
+    @ConfigItem(
+        keyName = "tagTimeoutTicks",
+        name = "Tag lasts",
+        description = "How long a prodded shoal counts as tagged. Should match how long it stays agitated in game.",
+        section = netsSection,
+        position = 6
+    )
+    @Range(min = 10, max = 100)
+    @Units(Units.TICKS)
+    default int tagTimeoutTicks()
+    {
+        return 50;
+    }
+
+    @ConfigItem(
+        keyName = "showNetClickbox",
+        name = "Show net clickbox",
+        description = "Outlines where each net accepts clicks.",
+        section = netsSection,
+        position = 7
+    )
+    default boolean showNetClickbox()
+    {
+        return false;
+    }
+
+    @Alpha
+    @ConfigItem(
+        keyName = "netClickbox",
+        name = "Net clickbox",
+        description = "Outline colour.",
+        section = netsSection,
+        position = 8
+    )
+    default Color netClickbox()
+    {
+        return new Color(255, 255, 255, 100);
+    }
 
     @ConfigSection(
         name = "Gear and supplies",
@@ -83,7 +176,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "claimOptionText",
         name = "Claim option text",
-        description = "Case-insensitive.",
+        description = "The option text to remove. Case-insensitive.",
         section = interfaceSection,
         position = 1
     )
@@ -95,7 +188,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "blockMovingFishOut",
         name = "Block moving fish out",
-        description = "Removes 'Move to Inventory' on caught fish.",
+        description = "Removes 'Move to Inventory' on caught fish until you bank.",
         section = interfaceSection,
         position = 2
     )
@@ -131,7 +224,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "blockEarlyHarvest",
         name = "Block early harvest",
-        description = "Removes 'Harvest' under the threshold below.",
+        description = "Removes the 'Harvest' option on a net under the threshold. At or above it the entry is left as the game orders it.",
         section = netsSection,
         position = 0
     )
@@ -143,7 +236,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "minFishToHarvest",
         name = "Min fish to harvest",
-        description = "Minimum catch to allow 'Harvest'.",
+        description = "Catch a net needs before this setting stops removing 'Harvest'.",
         section = netsSection,
         position = 1
     )
@@ -151,18 +244,6 @@ public interface BetterDriftNetConfig extends Config
     default int minFishToHarvest()
     {
         return 8;
-    }
-
-    @ConfigItem(
-        keyName = "highlightAnnette",
-        name = "Highlight Annette when netless",
-        description = "Green outline while you carry no drift nets.",
-        section = netsSection,
-        position = 2
-    )
-    default boolean highlightAnnette()
-    {
-        return true;
     }
 
     @ConfigItem(
@@ -214,11 +295,23 @@ public interface BetterDriftNetConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "tunnelDialogGuard",
+        name = "Tunnel dialog guard",
+        description = "Already-paid dialog: 'Enter instance.' green, mouse clicks on 'Don't enter.' blocked. Number keys still select either.",
+        section = gearSection,
+        position = 4
+    )
+    default boolean tunnelDialogGuard()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "deprioDoorWhileArmed",
         name = "Deprio door while armed",
         description = "Plant door: 'Navigate' and 'Examine' below 'Walk here' while your weapon slot is filled.",
         section = gearSection,
-        position = 4
+        position = 5
     )
     default boolean deprioDoorWhileArmed()
     {

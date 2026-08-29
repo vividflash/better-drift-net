@@ -25,7 +25,7 @@
 package com.vividflash.betterdriftnet.features;
 
 import com.vividflash.betterdriftnet.BetterDriftNetConfig;
-import java.awt.Color;
+import com.vividflash.betterdriftnet.TaggedFishMarker;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Shape;
@@ -33,23 +33,17 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
-import net.runelite.api.ItemContainer;
-import net.runelite.api.gameval.InventoryID;
-import net.runelite.api.gameval.ItemID;
+import net.runelite.api.NPC;
+import net.runelite.api.WorldView;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 
-/**
- * Scene highlights for the drift-net area, fed by {@link DriftNetFeature}'s
- * object tracking.
- */
+/** Net clickboxes, and the hull of the tagged shoals {@link DriftNetFeature} hides. */
 @Singleton
 public class DriftNetSceneOverlay extends Overlay
 {
-    private static final Color ANNETTE_HIGHLIGHT = new Color(13, 122, 13);
-
     private final Client client;
     private final BetterDriftNetConfig config;
     private final DriftNetFeature feature;
@@ -72,30 +66,43 @@ public class DriftNetSceneOverlay extends Overlay
             return null;
         }
 
-        if (config.highlightAnnette() && carriesNoDriftNets())
+        if (config.showNetClickbox())
         {
-            outline(graphics, feature.getAnnette(), ANNETTE_HIGHLIGHT);
+            for (GameObject net : feature.getNets())
+            {
+                if (net != null && net.getClickbox() != null)
+                {
+                    OverlayUtil.renderPolygon(graphics, net.getClickbox(), config.netClickbox());
+                }
+            }
         }
 
+        TaggedFishMarker marker = config.taggedFishMarker();
+        if (!config.hideTaggedFish() || marker == TaggedFishMarker.OFF)
+        {
+            return null;
+        }
+
+        WorldView worldView = client.getTopLevelWorldView();
+        if (worldView == null)
+        {
+            return null;
+        }
+
+        for (NPC npc : worldView.npcs())
+        {
+            if (!feature.isTaggedShoal(npc))
+            {
+                continue;
+            }
+            Shape shape = marker == TaggedFishMarker.TILE
+                ? npc.getCanvasTilePoly()
+                : npc.getConvexHull();
+            if (shape != null)
+            {
+                OverlayUtil.renderPolygon(graphics, shape, config.taggedFishColour());
+            }
+        }
         return null;
-    }
-
-    private boolean carriesNoDriftNets()
-    {
-        ItemContainer inv = client.getItemContainer(InventoryID.INV);
-        return inv != null && !inv.contains(ItemID.FOSSIL_DRIFT_NET);
-    }
-
-    private static void outline(Graphics2D graphics, GameObject object, Color color)
-    {
-        if (object == null)
-        {
-            return;
-        }
-        Shape clickbox = object.getClickbox();
-        if (clickbox != null)
-        {
-            OverlayUtil.renderPolygon(graphics, clickbox, color);
-        }
     }
 }

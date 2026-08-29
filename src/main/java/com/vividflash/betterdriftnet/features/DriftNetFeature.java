@@ -28,13 +28,16 @@ import com.vividflash.betterdriftnet.BetterDriftNetConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.ChatMessageType;
+import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameObject;
@@ -44,7 +47,9 @@ import net.runelite.api.ItemContainer;
 import net.runelite.api.Menu;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.Renderable;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -52,15 +57,22 @@ import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetUtil;
+import net.runelite.client.callback.RenderCallback;
+import net.runelite.client.callback.RenderCallbackManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -81,11 +93,10 @@ import net.runelite.client.util.Text;
  *
  * <p>Sub-features live in three overlay classes: trident equip reminder in
  * {@link DriftNetTridentOverlay}, numulite balance warning in
- * {@link DriftNetNumuliteOverlay}, Annette and full-net scene highlights in
- * {@link DriftNetSceneOverlay}.
+ * {@link DriftNetNumuliteOverlay}.
  */
 @Singleton
-public class DriftNetFeature
+public class DriftNetFeature implements RenderCallback
 {
     /** Fossil Island underwater area, matching core DriftNetPlugin's region check. */
     private static final int UNDERWATER_REGION = 15008;
@@ -126,6 +137,12 @@ public class DriftNetFeature
     private static final int NET_ZONE_Y_MIN = NET2_Y_MIN - SOUTH_EAST_MARGIN;                // 10285
     private static final int NET_ZONE_Y_MAX = NET1_ROW_Y + NET_DEPTH + HUNTING_WATER_NORTH;  // 10301
 
+    // The tunnel's already-paid dialog. Both markers are required so the guard
+    // cannot fire on some other dialog that happens to offer an instance.
+    private static final String ENTER_INSTANCE = "Enter instance.";
+    private static final String DONT_ENTER = "Don't enter.";
+    private static final String FREE_ACCESS_MARKER = "permanent free access";
+
     private static final String MOVE_TO_INVENTORY = "Move to Inventory";
     private static final String HARVEST = "Harvest";
     private static final String DRIFT_NET_TARGET = "drift net";
@@ -141,7 +158,7 @@ public class DriftNetFeature
 
     // The plant door into the drift-net area, "Navigate" in game. It cannot be
     // swum through with a weapon equipped, hence the while-armed deprioritization.
-    // Not one of the FOSSIL_DRIFTNET_ENTRANCE ids, which are a different object.
+    // Not one of the FOSSIL_DRIFTNET_ENTRANCE ids, which are the paid-access tunnel.
     private static final int DOOR_ID = ObjectID.FOSSIL_UNDERWATER_DRIFTNET_CURTAIN;
 
     /** The five object-click actions. Their ids are not contiguous. */
@@ -155,6 +172,18 @@ public class DriftNetFeature
 
     /** One drift-net banking fee, in numulite. */
     static final int BANKING_FEE = 5;
+
+    /** A net holds this many fish, so a catch count outside 0 to 10 is not a real reading. */
+    private static final int NET_CAPACITY = 10;
+
+    private static final int SHOAL_UNTAGGED = 1;
+    private static final int SHOAL_TAGGED = 2;
+
+    // A prod is what tags a shoal, and nothing announces the tag ending, so tags are
+    // held per NPC index and expire on a timer as well as on despawn. The shoal's own
+    // animation is no use here: it tracks whether the fish is moving, not whether it
+    // has been prodded.
+    private static final String PROD_MESSAGE = "prod at the shoal";
 
     // Deep-water trident warning dialog (e.g. wielding the Merfolk trident in
     // the area): "Play it safe." cancels the wield; the other line keeps it.
@@ -199,13 +228,23 @@ public class DriftNetFeature
     private OverlayManager overlayManager;
 
     @Inject
+    private DriftNetSceneOverlay sceneOverlay;
+
+    @Inject
+    private RenderCallbackManager renderCallbackManager;
+
+    @Inject
     private DriftNetTridentOverlay tridentOverlay;
 
     @Inject
     private DriftNetNumuliteOverlay numuliteOverlay;
 
-    @Inject
-    private DriftNetSceneOverlay sceneOverlay;
+    // The two net objects, tracked so the overlay can draw their clickbox.
+    private GameObject net1Object;
+    private GameObject net2Object;
+
+    private final Map<Integer, Integer> taggedUntilTick = new HashMap<>();
+    private NPC lastShoalInteraction;
 
     private boolean bankedSinceOpen;
     private boolean interfaceWasOpen;
@@ -215,68 +254,38 @@ public class DriftNetFeature
     private String allowListSource;
     private List<Pattern> allowListPatterns = List.of();
 
-    // Annette is a game object, not an NPC, so she arrives on the spawn events.
-    private GameObject annette;
-
     public void startUp()
     {
+        renderCallbackManager.register(this);
         bankedSinceOpen = false;
         interfaceWasOpen = false;
         blockMessageSent = false;
+        taggedUntilTick.clear();
+        lastShoalInteraction = null;
+        net1Object = null;
+        net2Object = null;
         eventBus.register(this);
+        overlayManager.add(sceneOverlay);
         overlayManager.add(tridentOverlay);
         overlayManager.add(numuliteOverlay);
-        overlayManager.add(sceneOverlay);
     }
 
     public void shutDown()
     {
+        renderCallbackManager.unregister(this);
+        overlayManager.remove(sceneOverlay);
         overlayManager.remove(tridentOverlay);
         overlayManager.remove(numuliteOverlay);
-        overlayManager.remove(sceneOverlay);
         eventBus.unregister(this);
         bankedSinceOpen = false;
         interfaceWasOpen = false;
         blockMessageSent = false;
+        taggedUntilTick.clear();
+        lastShoalInteraction = null;
+        net1Object = null;
+        net2Object = null;
         allowListSource = null;
         allowListPatterns = List.of();
-        annette = null;
-    }
-
-    @Subscribe
-    public void onGameStateChanged(GameStateChanged event)
-    {
-        // Anything other than logged in invalidates every tracked object; spawns
-        // re-fire on the next scene load.
-        if (event.getGameState() != GameState.LOGGED_IN)
-        {
-            annette = null;
-        }
-    }
-
-    @Subscribe
-    public void onGameObjectSpawned(GameObjectSpawned event)
-    {
-        GameObject object = event.getGameObject();
-        if (object.getId() == ObjectID.FOSSIL_MERMAID_DRIFTNETS)
-        {
-            annette = object;
-        }
-    }
-
-    @Subscribe
-    public void onGameObjectDespawned(GameObjectDespawned event)
-    {
-        if (event.getGameObject() == annette)
-        {
-            annette = null;
-        }
-    }
-
-    /** Annette (net seller) if her object is in the scene, else null. */
-    GameObject getAnnette()
-    {
-        return annette;
     }
 
     /**
@@ -287,10 +296,110 @@ public class DriftNetFeature
     @Subscribe(priority = -1)
     public void onPostMenuSort(PostMenuSort event)
     {
+        if (client.getGameState() != GameState.LOGGED_IN)
+        {
+            return;
+        }
+        deprioritizeDoor();
+        prioritizeUntaggedShoals();
+    }
+
+    /**
+     * Puts untagged shoals above tagged ones where their entries overlap, so a
+     * second left-click tags the other shoal instead of re-clicking the first.
+     * Only the shoal entries move; every other entry keeps its slot.
+     */
+    private void prioritizeUntaggedShoals()
+    {
+        if (!config.prioritizeUntaggedFish())
+        {
+            return;
+        }
+
+        Menu menu = client.getMenu();
+        MenuEntry[] entries = menu.getMenuEntries();
+        List<Integer> slots = new ArrayList<>();
+        List<MenuEntry> tagged = new ArrayList<>();
+        List<MenuEntry> untagged = new ArrayList<>();
+
+        for (int i = 0; i < entries.length; i++)
+        {
+            int state = shoalState(entries[i]);
+            if (state == 0)
+            {
+                continue;
+            }
+            slots.add(i);
+            if (state == SHOAL_TAGGED)
+            {
+                tagged.add(entries[i]);
+            }
+            else
+            {
+                untagged.add(entries[i]);
+            }
+        }
+
+        if (tagged.isEmpty() || untagged.isEmpty())
+        {
+            return;
+        }
+
+        // Entries run bottom-to-top, so the tagged ones take the lower slots.
+        MenuEntry[] reordered = entries.clone();
+        int slot = 0;
+        for (MenuEntry entry : tagged)
+        {
+            reordered[slots.get(slot++)] = entry;
+        }
+        for (MenuEntry entry : untagged)
+        {
+            reordered[slots.get(slot++)] = entry;
+        }
+        if (!Arrays.equals(reordered, entries))
+        {
+            menu.setMenuEntries(reordered);
+        }
+    }
+
+    /** Keeps tagged shoals out of the render while their tag holds. */
+    @Override
+    public boolean addEntity(Renderable renderable, boolean drawingUI)
+    {
+        if (!config.hideTaggedFish() || !(renderable instanceof NPC))
+        {
+            return true;
+        }
+        return !isTaggedShoal((NPC) renderable);
+    }
+
+    /** True for a fish shoal prodded recently enough that its tag has not expired. */
+    boolean isTaggedShoal(NPC npc)
+    {
+        if (npc.getId() != NpcID.FOSSIL_FISH_SHOAL)
+        {
+            return false;
+        }
+        Integer expiry = taggedUntilTick.get(npc.getIndex());
+        return expiry != null && expiry > client.getTickCount();
+    }
+
+    /** SHOAL_TAGGED, SHOAL_UNTAGGED, or 0 when the entry is not a fish shoal. */
+    private int shoalState(MenuEntry entry)
+    {
+        NPC npc = entry.getNpc();
+        if (npc == null || npc.getId() != NpcID.FOSSIL_FISH_SHOAL)
+        {
+            return 0;
+        }
+        return isTaggedShoal(npc) ? SHOAL_TAGGED : SHOAL_UNTAGGED;
+    }
+
+    private void deprioritizeDoor()
+    {
         // No area check: the door object id exists only here, and the approach side
         // is outside the underwater region, which is where the deprio has to work.
-        if (!config.deprioDoorWhileArmed() || client.getGameState() != GameState.LOGGED_IN
-            || !weaponEquipped())
+        if (!config.deprioDoorWhileArmed() || !weaponEquipped())
         {
             return;
         }
@@ -366,7 +475,17 @@ public class DriftNetFeature
     @Subscribe
     public void onClientTick(ClientTick tick)
     {
-        if (client.getGameState() != GameState.LOGGED_IN || !inDriftNetArea())
+        if (client.getGameState() != GameState.LOGGED_IN)
+        {
+            return;
+        }
+
+        if (config.tunnelDialogGuard())
+        {
+            highlightInstanceEntryDialog();
+        }
+
+        if (!inDriftNetArea())
         {
             return;
         }
@@ -392,10 +511,14 @@ public class DriftNetFeature
         // The claim and fish-move guards act on the open reward interface; the
         // early-harvest gate acts on the world "Harvest" object click while the
         // interface is still closed, so it isn't gated on the window being open.
-        boolean claimGuard = config.blockClaimOption() && interfaceOpen;
+        // Both interface guards lift on the same signal as the close guard: once the
+        // catch is banked, what is left is the unbankable remainder and taking it to
+        // inventory is the only way to keep it.
+        boolean claimGuard = config.blockClaimOption() && interfaceOpen && !bankedSinceOpen;
         boolean fishGuard = config.blockMovingFishOut() && interfaceOpen;
         boolean minCatchGuard = config.blockEarlyHarvest();
-        if (!claimGuard && !fishGuard && !minCatchGuard)
+        boolean hideTagged = config.hideTaggedFish();
+        if (!claimGuard && !fishGuard && !minCatchGuard && !hideTagged)
         {
             return;
         }
@@ -409,13 +532,103 @@ public class DriftNetFeature
         MenuEntry[] filtered = Arrays.stream(entries)
             .filter(entry -> !isBlockedClaim(entry, blocked)
                 && !isBlockedFishMove(entry, fishGuard, allowList)
-                && !isBlockedEarlyHarvest(entry, minCatchGuard, minCatch))
+                && !isBlockedEarlyHarvest(entry, minCatchGuard, minCatch)
+                && !(hideTagged && shoalState(entry) == SHOAL_TAGGED))
             .toArray(MenuEntry[]::new);
 
         if (filtered.length != entries.length)
         {
             menu.setMenuEntries(filtered);
         }
+    }
+
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event)
+    {
+        // Anything other than logged in invalidates the tracked objects; spawns
+        // re-fire on the next scene load.
+        if (event.getGameState() != GameState.LOGGED_IN)
+        {
+            net1Object = null;
+            net2Object = null;
+        }
+    }
+
+    @Subscribe
+    public void onGameObjectSpawned(GameObjectSpawned event)
+    {
+        GameObject object = event.getGameObject();
+        if (object.getId() == ObjectID.FOSSIL_DRIFT_NET1_MULTI)
+        {
+            net1Object = object;
+        }
+        else if (object.getId() == ObjectID.FOSSIL_DRIFT_NET2_MULTI)
+        {
+            net2Object = object;
+        }
+    }
+
+    @Subscribe
+    public void onGameObjectDespawned(GameObjectDespawned event)
+    {
+        GameObject object = event.getGameObject();
+        if (object == net1Object)
+        {
+            net1Object = null;
+        }
+        else if (object == net2Object)
+        {
+            net2Object = null;
+        }
+    }
+
+    /** The two drift net objects currently in the scene, either may be null. */
+    GameObject[] getNets()
+    {
+        return new GameObject[] {net1Object, net2Object};
+    }
+
+    @Subscribe
+    public void onInteractingChanged(InteractingChanged event)
+    {
+        if (event.getSource() != client.getLocalPlayer())
+        {
+            return;
+        }
+        Actor target = event.getTarget();
+        if (target instanceof NPC && ((NPC) target).getId() == NpcID.FOSSIL_FISH_SHOAL)
+        {
+            lastShoalInteraction = (NPC) target;
+        }
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event)
+    {
+        if (lastShoalInteraction == null
+            || !Text.removeTags(event.getMessage()).toLowerCase(Locale.ROOT).contains(PROD_MESSAGE))
+        {
+            return;
+        }
+        taggedUntilTick.put(lastShoalInteraction.getIndex(),
+            client.getTickCount() + config.tagTimeoutTicks());
+    }
+
+    @Subscribe
+    public void onNpcDespawned(NpcDespawned event)
+    {
+        taggedUntilTick.remove(event.getNpc().getIndex());
+        if (event.getNpc() == lastShoalInteraction)
+        {
+            lastShoalInteraction = null;
+        }
+    }
+
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        int now = client.getTickCount();
+        taggedUntilTick.values().removeIf(expiry -> expiry <= now);
     }
 
     @Subscribe
@@ -436,6 +649,29 @@ public class DriftNetFeature
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked event)
     {
+        // Ahead of every gate. The confirmation replaces the item grid, so
+        // isDriftNetOpen() reads false while it is up. Unconditional on purpose: a
+        // refused bank is not fixable from inside the window, so staying armed
+        // would trap the player. Read by the fish-move block as well, so it cannot
+        // sit behind the close guard's own setting either.
+        if (event.getParam1() == InterfaceID.FossilDriftnet.CONFIRM_BANK
+            || event.getParam1() == InterfaceID.FossilDriftnet.CONFIRM_DESTROY)
+        {
+            bankedSinceOpen = true;
+            return;
+        }
+
+        if (config.tunnelDialogGuard() && isDontEnterClick(event))
+        {
+            event.consume();
+            if (config.showBlockMessages())
+            {
+                client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+                    "[Safety] 'Don't enter' blocked. Pick Enter instance.", null);
+            }
+            return;
+        }
+
         if (!inDriftNetArea())
         {
             return;
@@ -452,21 +688,7 @@ public class DriftNetFeature
             return;
         }
 
-        if (!config.bankBeforeClose() || !isDriftNetOpen())
-        {
-            return;
-        }
-
-        // Unconditional on purpose: a refused bank is not fixable from inside the
-        // window, so staying armed would trap the player.
-        if (event.getParam1() == InterfaceID.FossilDriftnet.CONFIRM_BANK
-            || event.getParam1() == InterfaceID.FossilDriftnet.CONFIRM_DESTROY)
-        {
-            bankedSinceOpen = true;
-            return;
-        }
-
-        if (bankedSinceOpen)
+        if (!isDriftNetOpen() || !config.bankBeforeClose() || bankedSinceOpen)
         {
             return;
         }
@@ -505,7 +727,9 @@ public class DriftNetFeature
 
     private boolean isBlockedFishMove(MenuEntry entry, boolean fishGuard, List<Pattern> allowList)
     {
-        if (!fishGuard || !isDriftNetEntry(entry)
+        // Once the catch is banked, what is left is the unbankable remainder, so
+        // moving it out is the only way to keep it.
+        if (!fishGuard || bankedSinceOpen || !isDriftNetEntry(entry)
             || !MOVE_TO_INVENTORY.equalsIgnoreCase(Text.removeTags(entry.getOption())))
         {
             return false;
@@ -538,23 +762,38 @@ public class DriftNetFeature
         {
             return false;
         }
-        return harvestCatchCount(entry) < minCatch;
+        // Only a partial catch is worth guarding. An empty net is left alone: it has
+        // nothing to lose, and its menu offers Take down rather than Harvest.
+        int count = harvestCatchCount(entry);
+        return count >= 1 && count < minCatch;
     }
 
     /**
-     * The catch count of the net a "Harvest" entry refers to. The entry's
-     * param0/param1 are the object's scene coords; mapped to a world tile they
-     * pick the nearer net's catch varbit.
+     * The catch count of the net a "Harvest" entry refers to, or -1 when it cannot
+     * be read. The entry's param0/param1 are the object's scene coords; mapped to a
+     * world tile they pick the nearer net's catch varbit. An unreadable count leaves
+     * the harvest allowed, so the guard never blocks on a guess.
      */
     private int harvestCatchCount(MenuEntry entry)
     {
         LocalPoint scene = LocalPoint.fromScene(entry.getParam0(), entry.getParam1(),
             client.getTopLevelWorldView());
+        if (scene == null)
+        {
+            return -1;
+        }
+
         WorldPoint wp = WorldPoint.fromLocalInstance(client, scene);
+        if (wp == null)
+        {
+            return -1;
+        }
+
         int catchVarbit = nearestTileDistance(wp, NET1_TILES) <= nearestTileDistance(wp, NET2_TILES)
             ? VarbitID.FOSSIL_DRIFT_NET1_CATCH
             : VarbitID.FOSSIL_DRIFT_NET2_CATCH;
-        return client.getVarbitValue(catchVarbit);
+        int count = client.getVarbitValue(catchVarbit);
+        return count >= 0 && count <= NET_CAPACITY ? count : -1;
     }
 
     /** An inclusive west-to-east row of plane-1 tiles. */
@@ -621,6 +860,69 @@ public class DriftNetFeature
                 line.setTextColor(HIGHLIGHT_GREEN);
             }
         }
+    }
+
+    /**
+     * Green-highlights "Enter instance." on the tunnel's already-paid dialog. The
+     * colour is written onto the widget and not restored.
+     */
+    private void highlightInstanceEntryDialog()
+    {
+        Widget[] lines = dialogOptionLines();
+        if (lines == null || !isInstanceEntryDialog(lines))
+        {
+            return;
+        }
+        for (Widget line : lines)
+        {
+            String text = line.getText();
+            if (text != null && ENTER_INSTANCE.equalsIgnoreCase(Text.removeTags(text)))
+            {
+                line.setTextColor(HIGHLIGHT_GREEN);
+            }
+        }
+    }
+
+    /** True when the click landed on the tunnel dialog's "Don't enter." line. */
+    private boolean isDontEnterClick(MenuOptionClicked event)
+    {
+        if (event.getParam1() != InterfaceID.Chatmenu.OPTIONS)
+        {
+            return false;
+        }
+        Widget[] lines = dialogOptionLines();
+        int index = event.getParam0();
+        if (lines == null || index < 0 || index >= lines.length || !isInstanceEntryDialog(lines))
+        {
+            return false;
+        }
+        String text = lines[index].getText();
+        return text != null && DONT_ENTER.equalsIgnoreCase(Text.removeTags(text));
+    }
+
+    /** Both markers together identify the tunnel's already-paid dialog. */
+    private static boolean isInstanceEntryDialog(Widget[] lines)
+    {
+        boolean enter = false;
+        boolean freeAccess = false;
+        for (Widget line : lines)
+        {
+            String text = line.getText();
+            if (text == null)
+            {
+                continue;
+            }
+            String plain = Text.removeTags(text);
+            enter |= ENTER_INSTANCE.equalsIgnoreCase(plain);
+            freeAccess |= plain.toLowerCase(Locale.ROOT).contains(FREE_ACCESS_MARKER);
+        }
+        return enter && freeAccess;
+    }
+
+    private Widget[] dialogOptionLines()
+    {
+        Widget options = client.getWidget(InterfaceID.Chatmenu.OPTIONS);
+        return options == null ? null : options.getDynamicChildren();
     }
 
     private boolean containsPlayItSafe(Widget[] lines)

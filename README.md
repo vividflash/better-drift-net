@@ -8,8 +8,10 @@ unless you turn off Show block messages; removed menu options are silent.
 **Interface**
 
 - **Block claim option**: removes the claim option from the catch interface.
-- **Claim option text**: case-insensitive. Default `Take all`.
-- **Block moving fish out**: removes `Move to Inventory` on caught fish.
+- **Claim option text**: the option text to remove, case-insensitive. Default
+  `Take all`.
+- **Block moving fish out**: removes `Move to Inventory` on caught fish until
+  you bank.
 - **Still movable items**: exceptions to that block, `*` wildcards. Default
   `Pufferfish, Numulite, *fossil*, Clue box*`.
 - **Bank before close**: between harvesting and the banking confirmation,
@@ -18,11 +20,21 @@ unless you turn off Show block messages; removed menu options are silent.
 
 **Nets**
 
-- **Block early harvest**: removes `Harvest` on a net under the threshold
-  below.
-- **Min fish to harvest**: default 8.
-- **Highlight Annette when netless**: green outline while you carry no drift
-  nets.
+- **Block early harvest**: removes the `Harvest` option on a net under the
+  threshold. At or above it the entry is left alone, and the game keeps
+  `Harvest` off left-click until the net is full.
+- **Min fish to harvest**: the threshold, default 8.
+- **Hide tagged fish**: a shoal you have prodded is not drawn and has no menu
+  entries until its tag expires. The marker below still shows where it is.
+- **Tagged fish marker**: what to draw where a hidden shoal is, off, hull or
+  tile.
+- **Tagged fish colour**: marker colour.
+- **Prioritize untagged fish**: where shoals overlap, the untagged one takes
+  left-click, so a second click tags the other one.
+- **Show net clickbox**: outlines where each net accepts clicks.
+- **Net clickbox**: outline colour.
+- **Tag lasts**: how long a prodded shoal counts as tagged, default 50 ticks.
+  Set it to match how long a shoal stays agitated.
 
 **Gear and supplies**
 
@@ -34,6 +46,9 @@ unless you turn off Show block messages; removed menu options are silent.
 - **Chasing weapon names**: `*` wildcards. Default `*trident*, *harpoon*`.
 - **Mark low numulite**: red inventory mark in the hunting zone while your
   stack is under 5.
+- **Tunnel dialog guard**: on the tunnel's already-paid dialog, highlights
+  `Enter instance.` green and blocks mouse clicks on `Don't enter.`. Number
+  keys still work.
 - **Deprio door while armed**: moves the plant door's `Navigate` and `Examine`
   below `Walk here` while your weapon slot is filled.
 
