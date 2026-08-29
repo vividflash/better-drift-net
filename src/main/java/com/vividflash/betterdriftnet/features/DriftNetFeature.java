@@ -39,6 +39,7 @@ import net.runelite.api.Client;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
+import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Menu;
 import net.runelite.api.MenuAction;
@@ -66,11 +67,12 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 
 /**
- * Drift net interface guards and highlights. The whole feature is scoped to
+ * Drift net interface guards and highlights. Most of the feature is scoped to
  * the Fossil Island underwater area (region 15008, the same check RuneLite
  * core's Driftnet plugin uses); the zone-gated parts (trident dialog, and the
- * trident and numulite overlays) are further scoped to the hunting
- * zone box below.
+ * trident and numulite overlays) are further scoped to the hunting zone box
+ * below. The door deprio is scoped by its object id instead, since it is
+ * approached from outside the region.
  *
  * <p>The bank-before-close guard is an armed/disarmed state machine: the
  * drift net interface loading (re)arms it, and confirming the bank or a bin
@@ -137,13 +139,10 @@ public class DriftNetFeature
     private static final WorldPoint[] NET1_TILES = tileRow(NET1_X_MIN, NET1_X_MAX, NET1_ROW_Y);
     private static final WorldPoint[] NET2_TILES = tileColumn(NET2_COL_X, NET2_Y_MIN, NET2_Y_MAX);
 
-    // The seaweed door into the drift-net area, all three scene variants of the
-    // gameval "FOSSIL_DRIFTNET_ENTRANCE" family. It cannot be swum through with
-    // a weapon equipped, hence the while-armed deprioritization.
-    private static final Set<Integer> DOOR_IDS = Set.of(
-        ObjectID.FOSSIL_DRIFTNET_ENTRANCE,
-        ObjectID.FOSSIL_DRIFTNET_ENTRANCE_1OP,
-        ObjectID.FOSSIL_DRIFTNET_ENTRANCE_2OPS);
+    // The plant door into the drift-net area, "Navigate" in game. It cannot be
+    // swum through with a weapon equipped, hence the while-armed deprioritization.
+    // Not one of the FOSSIL_DRIFTNET_ENTRANCE ids, which are a different object.
+    private static final int DOOR_ID = ObjectID.FOSSIL_UNDERWATER_DRIFTNET_CURTAIN;
 
     /** The five object-click actions. Their ids are not contiguous. */
     private static final Set<MenuAction> OBJECT_CLICKS = EnumSet.of(
@@ -151,11 +150,8 @@ public class DriftNetFeature
         MenuAction.GAME_OBJECT_THIRD_OPTION, MenuAction.GAME_OBJECT_FOURTH_OPTION,
         MenuAction.GAME_OBJECT_FIFTH_OPTION);
 
-    /** The entry kinds the seaweed door can contribute: its options plus Examine. */
+    /** The entry kinds the plant door can contribute: its options plus Examine. */
     private static final Set<MenuAction> DOOR_CLICKS = doorClicks();
-
-    /** Net status varbit value for a full net (core DriftNetStatus.FULL). */
-    private static final int DRIFT_NET_STATUS_FULL = 3;
 
     /** One drift-net banking fee, in numulite. */
     static final int BANKING_FEE = 5;
@@ -219,14 +215,8 @@ public class DriftNetFeature
     private String allowListSource;
     private List<Pattern> allowListPatterns = List.of();
 
-    // Reused by getFullNets(), which the scene overlay calls every render frame.
-    private final List<GameObject> fullNets = new ArrayList<>(2);
-
-    // Scene objects tracked for DriftNetSceneOverlay (same spawn-event route
-    // core DriftNetPlugin uses; Annette is a game object, not an NPC).
+    // Annette is a game object, not an NPC, so she arrives on the spawn events.
     private GameObject annette;
-    private GameObject net1Object;
-    private GameObject net2Object;
 
     public void startUp()
     {
@@ -250,10 +240,7 @@ public class DriftNetFeature
         blockMessageSent = false;
         allowListSource = null;
         allowListPatterns = List.of();
-        fullNets.clear();
         annette = null;
-        net1Object = null;
-        net2Object = null;
     }
 
     @Subscribe
@@ -264,8 +251,6 @@ public class DriftNetFeature
         if (event.getGameState() != GameState.LOGGED_IN)
         {
             annette = null;
-            net1Object = null;
-            net2Object = null;
         }
     }
 
@@ -277,31 +262,14 @@ public class DriftNetFeature
         {
             annette = object;
         }
-        else if (object.getId() == ObjectID.FOSSIL_DRIFT_NET1_MULTI)
-        {
-            net1Object = object;
-        }
-        else if (object.getId() == ObjectID.FOSSIL_DRIFT_NET2_MULTI)
-        {
-            net2Object = object;
-        }
     }
 
     @Subscribe
     public void onGameObjectDespawned(GameObjectDespawned event)
     {
-        GameObject object = event.getGameObject();
-        if (object == annette)
+        if (event.getGameObject() == annette)
         {
             annette = null;
-        }
-        else if (object == net1Object)
-        {
-            net1Object = null;
-        }
-        else if (object == net2Object)
-        {
-            net2Object = null;
         }
     }
 
@@ -312,35 +280,17 @@ public class DriftNetFeature
     }
 
     /**
-     * The tracked net objects whose status varbit currently reads full. The
-     * returned list is reused between calls.
-     */
-    List<GameObject> getFullNets()
-    {
-        fullNets.clear();
-        if (net1Object != null
-            && client.getVarbitValue(VarbitID.FOSSIL_DRIFT_NET1) == DRIFT_NET_STATUS_FULL)
-        {
-            fullNets.add(net1Object);
-        }
-        if (net2Object != null
-            && client.getVarbitValue(VarbitID.FOSSIL_DRIFT_NET2) == DRIFT_NET_STATUS_FULL)
-        {
-            fullNets.add(net2Object);
-        }
-        return fullNets;
-    }
-
-    /**
-     * Sinks the seaweed door's "Enter" (and Examine) below "Walk here" while
+     * Sinks the plant door's "Navigate" (and Examine) below "Walk here" while
      * a weapon is worn; it can't be swum through armed. Runs after
      * RuneLite's own menu sorting.
      */
     @Subscribe(priority = -1)
     public void onPostMenuSort(PostMenuSort event)
     {
+        // No area check: the door object id exists only here, and the approach side
+        // is outside the underwater region, which is where the deprio has to work.
         if (!config.deprioDoorWhileArmed() || client.getGameState() != GameState.LOGGED_IN
-            || !inDriftNetArea() || !weaponEquipped())
+            || !weaponEquipped())
         {
             return;
         }
@@ -378,10 +328,10 @@ public class DriftNetFeature
         }
     }
 
-    /** Any object action (Enter, ...) or Examine on the seaweed door. */
+    /** Any object action (Navigate, ...) or Examine on the plant door. */
     private static boolean isDoorEntry(MenuEntry entry)
     {
-        return DOOR_CLICKS.contains(entry.getType()) && DOOR_IDS.contains(entry.getIdentifier());
+        return DOOR_CLICKS.contains(entry.getType()) && entry.getIdentifier() == DOOR_ID;
     }
 
     /**
@@ -404,7 +354,13 @@ public class DriftNetFeature
     private boolean weaponEquipped()
     {
         ItemContainer worn = client.getItemContainer(InventoryID.WORN);
-        return worn != null && worn.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx()) != null;
+        if (worn == null)
+        {
+            return false;
+        }
+        // An empty equipment slot is an Item with id -1, not a null.
+        Item weapon = worn.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+        return weapon != null && weapon.getId() > -1;
     }
 
     @Subscribe

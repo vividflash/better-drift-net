@@ -51,7 +51,7 @@ public interface BetterDriftNetConfig extends Config
 
     @ConfigSection(
         name = "Gear and supplies",
-        description = "Trident, numulite and the seaweed door.",
+        description = "Trident, numulite and the plant door.",
         position = 2,
         closedByDefault = true
     )
@@ -154,23 +154,11 @@ public interface BetterDriftNetConfig extends Config
     }
 
     @ConfigItem(
-        keyName = "highlightFullNets",
-        name = "Highlight full nets",
-        description = "Orange outline on a full net.",
-        section = netsSection,
-        position = 2
-    )
-    default boolean highlightFullNets()
-    {
-        return true;
-    }
-
-    @ConfigItem(
         keyName = "highlightAnnette",
         name = "Highlight Annette when netless",
         description = "Green outline while you carry no drift nets.",
         section = netsSection,
-        position = 3
+        position = 2
     )
     default boolean highlightAnnette()
     {
@@ -228,7 +216,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "deprioDoorWhileArmed",
         name = "Deprio door while armed",
-        description = "Seaweed door: 'Enter' and 'Examine' below 'Walk here' while your weapon slot is filled.",
+        description = "Plant door: 'Navigate' and 'Examine' below 'Walk here' while your weapon slot is filled.",
         section = gearSection,
         position = 4
     )

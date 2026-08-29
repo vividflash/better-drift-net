@@ -101,7 +101,11 @@ public class DriftNetTridentOverlay extends WidgetItemOverlay
             return false;
         }
         Item weapon = worn.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
-        return weapon != null && matchesList(itemManager.getItemComposition(weapon.getId()).getName());
+        if (weapon == null || weapon.getId() <= -1)
+        {
+            return false;
+        }
+        return matchesList(itemManager.getItemComposition(weapon.getId()).getName());
     }
 
     private boolean matchesList(String itemName)

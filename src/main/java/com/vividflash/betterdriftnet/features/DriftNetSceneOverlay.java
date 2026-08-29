@@ -49,7 +49,6 @@ import net.runelite.client.ui.overlay.OverlayUtil;
 public class DriftNetSceneOverlay extends Overlay
 {
     private static final Color ANNETTE_HIGHLIGHT = new Color(13, 122, 13);
-    private static final Color FULL_NET_HIGHLIGHT = new Color(230, 130, 20);
 
     private final Client client;
     private final BetterDriftNetConfig config;
@@ -76,14 +75,6 @@ public class DriftNetSceneOverlay extends Overlay
         if (config.highlightAnnette() && carriesNoDriftNets())
         {
             outline(graphics, feature.getAnnette(), ANNETTE_HIGHLIGHT);
-        }
-
-        if (config.highlightFullNets())
-        {
-            for (GameObject net : feature.getFullNets())
-            {
-                outline(graphics, net, FULL_NET_HIGHLIGHT);
-            }
         }
 
         return null;

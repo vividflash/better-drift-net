@@ -21,7 +21,6 @@ unless you turn off Show block messages; removed menu options are silent.
 - **Block early harvest**: removes `Harvest` on a net under the threshold
   below.
 - **Min fish to harvest**: default 8.
-- **Highlight full nets**: orange outline on a full net.
 - **Highlight Annette when netless**: green outline while you carry no drift
   nets.
 
@@ -35,7 +34,7 @@ unless you turn off Show block messages; removed menu options are silent.
 - **Chasing weapon names**: `*` wildcards. Default `*trident*, *harpoon*`.
 - **Mark low numulite**: red inventory mark in the hunting zone while your
   stack is under 5.
-- **Deprio door while armed**: moves the seaweed door's `Enter` and `Examine`
+- **Deprio door while armed**: moves the plant door's `Navigate` and `Examine`
   below `Walk here` while your weapon slot is filled.
 
 ## License
