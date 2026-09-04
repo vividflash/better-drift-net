@@ -206,7 +206,7 @@ public interface BetterDriftNetConfig extends Config
     )
     default String stillMovableItems()
     {
-        return "Pufferfish, Numulite, *fossil*, Clue box*";
+        return "Pufferfish, Numulite, *fossil*, Clue bottle*";
     }
 
     @ConfigItem(

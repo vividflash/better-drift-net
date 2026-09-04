@@ -38,12 +38,42 @@ import net.runelite.client.plugins.PluginDescriptor;
 )
 public class BetterDriftNetPlugin extends Plugin
 {
+    private static final String CONFIG_GROUP = "betterdriftnet";
+    private static final String ALLOW_LIST_KEY = "stillMovableItems";
+
+    /**
+     * Records which release last migrated the profile. Version-stamped rather
+     * than a flag, so a later release can add a step and run again.
+     */
+    private static final String MIGRATION_KEY = "migratedVersion";
+    private static final String MIGRATION_VERSION = "1.2";
+
+    /**
+     * The exception list 1.0 and 1.1 shipped. It named a clue box, which drift
+     * net fishing never produces.
+     */
+    private static final String STALE_ALLOW_LIST = "Pufferfish, Numulite, *fossil*, Clue box*";
+
+    /**
+     * Keys from settings 1.0 shipped and a later release dropped, cleared from
+     * profiles by the sweep. Add to this list and bump
+     * {@link #MIGRATION_VERSION} together.
+     */
+    private static final String[] DEAD_KEYS = {"highlightFullNets", "highlightAnnette"};
+
     @Inject
     private DriftNetFeature driftNetFeature;
+
+    @Inject
+    private BetterDriftNetConfig config;
+
+    @Inject
+    private ConfigManager configManager;
 
     @Override
     protected void startUp()
     {
+        migrateOnce();
         driftNetFeature.startUp();
     }
 
@@ -51,6 +81,34 @@ public class BetterDriftNetPlugin extends Plugin
     protected void shutDown()
     {
         driftNetFeature.shutDown();
+    }
+
+    /**
+     * One-time repair of settings an earlier release left wrong, gated so it
+     * never overrides a choice the user has since made.
+     */
+    private void migrateOnce()
+    {
+        if (MIGRATION_VERSION.equals(configManager.getConfiguration(CONFIG_GROUP, MIGRATION_KEY)))
+        {
+            return;
+        }
+        configManager.setConfiguration(CONFIG_GROUP, MIGRATION_KEY, MIGRATION_VERSION);
+
+        // A profile still on the old list gets today's; an edited one is left
+        // alone. Unset first so the proxy reads the default rather than the
+        // stored value, then write it back so the panel shows it.
+        if (STALE_ALLOW_LIST.equals(config.stillMovableItems()))
+        {
+            configManager.unsetConfiguration(CONFIG_GROUP, ALLOW_LIST_KEY);
+            configManager.setConfiguration(CONFIG_GROUP, ALLOW_LIST_KEY, config.stillMovableItems());
+        }
+
+        // Last, so a step above can still read what it retires.
+        for (String dead : DEAD_KEYS)
+        {
+            configManager.unsetConfiguration(CONFIG_GROUP, dead);
+        }
     }
 
     @Provides

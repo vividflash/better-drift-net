@@ -13,7 +13,7 @@ unless you turn off Show block messages; removed menu options are silent.
 - **Block moving fish out**: removes `Move to Inventory` on caught fish until
   you bank.
 - **Still movable items**: exceptions to that block, `*` wildcards. Default
-  `Pufferfish, Numulite, *fossil*, Clue box*`.
+  `Pufferfish, Numulite, *fossil*, Clue bottle*`.
 - **Bank before close**: between harvesting and the banking confirmation,
   blocks clicks on the game world and on the window's X. The bin's destroy
   confirmation lifts the block.
