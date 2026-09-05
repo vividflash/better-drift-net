@@ -249,7 +249,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "tridentWarningGuard",
         name = "Trident warning guard",
-        description = "Deep-water dialog in the hunting zone: wield-anyway line green, mouse clicks on \"Play it safe.\" blocked. Number keys still select either.",
+        description = "Deep-water dialog in the hunting zone: wield-anyway line green, \"Play it safe.\" blocked by mouse and number key.",
         section = gearSection,
         position = 0
     )
@@ -297,7 +297,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "tunnelDialogGuard",
         name = "Tunnel dialog guard",
-        description = "Already-paid dialog: 'Enter instance.' green, mouse clicks on 'Don't enter.' blocked. Number keys still select either.",
+        description = "Already-paid dialog: 'Enter instance.' green, 'Don't enter.' blocked by mouse and number key.",
         section = gearSection,
         position = 4
     )

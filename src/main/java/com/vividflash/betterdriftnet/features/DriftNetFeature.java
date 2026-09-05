@@ -25,6 +25,7 @@
 package com.vividflash.betterdriftnet.features;
 
 import com.vividflash.betterdriftnet.BetterDriftNetConfig;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -75,6 +76,8 @@ import net.runelite.client.callback.RenderCallback;
 import net.runelite.client.callback.RenderCallbackManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.input.KeyListener;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 
@@ -96,7 +99,7 @@ import net.runelite.client.util.Text;
  * {@link DriftNetNumuliteOverlay}.
  */
 @Singleton
-public class DriftNetFeature implements RenderCallback
+public class DriftNetFeature implements RenderCallback, KeyListener
 {
     /** Fossil Island underwater area, matching core DriftNetPlugin's region check. */
     private static final int UNDERWATER_REGION = 15008;
@@ -239,6 +242,9 @@ public class DriftNetFeature implements RenderCallback
     @Inject
     private DriftNetNumuliteOverlay numuliteOverlay;
 
+    @Inject
+    private KeyManager keyManager;
+
     // The two net objects, tracked so the overlay can draw their clickbox.
     private GameObject net1Object;
     private GameObject net2Object;
@@ -268,10 +274,12 @@ public class DriftNetFeature implements RenderCallback
         overlayManager.add(sceneOverlay);
         overlayManager.add(tridentOverlay);
         overlayManager.add(numuliteOverlay);
+        keyManager.registerKeyListener(this);
     }
 
     public void shutDown()
     {
+        keyManager.unregisterKeyListener(this);
         renderCallbackManager.unregister(this);
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(tridentOverlay);
@@ -710,6 +718,173 @@ public class DriftNetFeature implements RenderCallback
         }
     }
 
+    // The number keys pick a dialog line without going through
+    // MenuOptionClicked. The pressed key and the typed key arrive as separate
+    // events, so consuming one does not suppress the other and both are taken.
+    @Override
+    public void keyPressed(KeyEvent e)
+    {
+        consumeIfBlockedDialogDigit(e);
+    }
+
+    @Override
+    public void keyTyped(KeyEvent e)
+    {
+        consumeIfBlockedDialogDigit(e);
+    }
+
+    @Override
+    public void keyReleased(KeyEvent e)
+    {
+    }
+
+    private void consumeIfBlockedDialogDigit(KeyEvent e)
+    {
+        if (!config.tridentWarningGuard() && !config.tunnelDialogGuard())
+        {
+            return;
+        }
+
+        int digit = digitOf(e);
+        if (digit > 0 && (isBlockedTridentDigit(digit) || isBlockedTunnelDigit(digit)))
+        {
+            e.consume();
+        }
+    }
+
+    private static int digitOf(KeyEvent e)
+    {
+        char ch = e.getKeyChar();
+        if (ch >= '1' && ch <= '9')
+        {
+            return ch - '0';
+        }
+
+        int code = e.getKeyCode();
+        if (code >= KeyEvent.VK_1 && code <= KeyEvent.VK_9)
+        {
+            return code - KeyEvent.VK_0;
+        }
+        if (code >= KeyEvent.VK_NUMPAD1 && code <= KeyEvent.VK_NUMPAD9)
+        {
+            return code - KeyEvent.VK_NUMPAD0;
+        }
+        return -1;
+    }
+
+    /**
+     * True when the given 1-based digit currently selects "Play it safe." on
+     * the trident dialog. The dialog title takes a child slot of its own, so
+     * the offset comes from locating the first child that is one of the two
+     * option lines rather than from a fixed index.
+     */
+    private boolean isBlockedTridentDigit(int digit)
+    {
+        if (!config.tridentWarningGuard() || !inDriftNetArea() || !inDriftNetFishingZone())
+        {
+            return false;
+        }
+
+        Widget[] lines = dialogOptionLines();
+        if (lines == null || !containsPlayItSafe(lines))
+        {
+            return false;
+        }
+
+        int firstOptionIndex = firstTridentOptionIndex(lines);
+        if (firstOptionIndex < 0)
+        {
+            return false;
+        }
+
+        int index = firstOptionIndex + digit - 1;
+        if (index < 0 || index >= lines.length || lines[index] == null)
+        {
+            return false;
+        }
+
+        String text = lines[index].getText();
+        return text != null && PLAY_IT_SAFE.equalsIgnoreCase(Text.removeTags(text));
+    }
+
+    private static int firstTridentOptionIndex(Widget[] lines)
+    {
+        for (int i = 0; i < lines.length; i++)
+        {
+            if (lines[i] == null)
+            {
+                continue;
+            }
+            String text = lines[i].getText();
+            if (text == null)
+            {
+                continue;
+            }
+            String line = Text.removeTags(text);
+            if (PLAY_IT_SAFE.equalsIgnoreCase(line) || line.toLowerCase(Locale.ROOT).contains(WIELD_ANYWAY_MARKER))
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * True when the given 1-based digit currently selects "Don't enter." on
+     * the tunnel's already-paid dialog. The dialog title takes a child slot
+     * of its own, so the offset comes from locating the first child that is
+     * one of the two option lines rather than from a fixed index.
+     */
+    private boolean isBlockedTunnelDigit(int digit)
+    {
+        if (!config.tunnelDialogGuard())
+        {
+            return false;
+        }
+
+        Widget[] lines = dialogOptionLines();
+        if (lines == null || !isInstanceEntryDialog(lines))
+        {
+            return false;
+        }
+
+        int firstOptionIndex = firstTunnelOptionIndex(lines);
+        if (firstOptionIndex < 0)
+        {
+            return false;
+        }
+
+        int index = firstOptionIndex + digit - 1;
+        if (index < 0 || index >= lines.length || lines[index] == null)
+        {
+            return false;
+        }
+
+        String text = lines[index].getText();
+        return text != null && DONT_ENTER.equalsIgnoreCase(Text.removeTags(text));
+    }
+
+    private static int firstTunnelOptionIndex(Widget[] lines)
+    {
+        for (int i = 0; i < lines.length; i++)
+        {
+            if (lines[i] == null)
+            {
+                continue;
+            }
+            String text = lines[i].getText();
+            if (text == null)
+            {
+                continue;
+            }
+            String line = Text.removeTags(text);
+            if (ENTER_INSTANCE.equalsIgnoreCase(line) || DONT_ENTER.equalsIgnoreCase(line))
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
 
     /** Whether a menu entry belongs to the drift net interface itself. */
     private static boolean isDriftNetEntry(MenuEntry entry)
