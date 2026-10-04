@@ -38,7 +38,7 @@ public interface BetterDriftNetConfig extends Config
 {
     @ConfigSection(
         name = "Interface",
-        description = "Catch interface guards.",
+        description = "",
         position = 0,
         closedByDefault = true
     )
@@ -46,7 +46,7 @@ public interface BetterDriftNetConfig extends Config
 
     @ConfigSection(
         name = "Nets",
-        description = "Harvest gate and fish shoals.",
+        description = "",
         position = 1,
         closedByDefault = true
     )
@@ -54,7 +54,7 @@ public interface BetterDriftNetConfig extends Config
 
     @ConfigItem(
         keyName = "hideTaggedFish",
-        name = "Hide tagged fish",
+        name = "Tagged fish hiding",
         description = "A tagged shoal is not drawn and has no menu entries until its tag expires.",
         section = netsSection,
         position = 2
@@ -66,8 +66,8 @@ public interface BetterDriftNetConfig extends Config
 
     @ConfigItem(
         keyName = "taggedFishMarker",
-        name = "Tagged fish marker",
-        description = "What to draw where a hidden shoal is.",
+        name = "Tagged fish marking",
+        description = "",
         section = netsSection,
         position = 3
     )
@@ -80,7 +80,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "taggedFishColour",
         name = "Tagged fish colour",
-        description = "Marker colour.",
+        description = "",
         section = netsSection,
         position = 4
     )
@@ -120,7 +120,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "showNetClickbox",
         name = "Show net clickbox",
-        description = "Outlines where each net accepts clicks.",
+        description = "",
         section = netsSection,
         position = 7
     )
@@ -133,7 +133,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "netClickbox",
         name = "Net clickbox",
-        description = "Outline colour.",
+        description = "",
         section = netsSection,
         position = 8
     )
@@ -144,7 +144,7 @@ public interface BetterDriftNetConfig extends Config
 
     @ConfigSection(
         name = "Gear and supplies",
-        description = "Trident, numulite and the plant door.",
+        description = "",
         position = 2,
         closedByDefault = true
     )
@@ -153,7 +153,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "showBlockMessages",
         name = "Show block messages",
-        description = "Chat message when a guard blocks a click.",
+        description = "",
         position = -1
     )
     default boolean showBlockMessages()
@@ -164,7 +164,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "blockClaimOption",
         name = "Block claim option",
-        description = "Removes the claim option from the catch interface.",
+        description = "",
         section = interfaceSection,
         position = 0
     )
@@ -176,7 +176,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "claimOptionText",
         name = "Claim option text",
-        description = "The option text to remove. Case-insensitive.",
+        description = "Case-insensitive.",
         section = interfaceSection,
         position = 1
     )
@@ -236,7 +236,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "minFishToHarvest",
         name = "Min fish to harvest",
-        description = "Catch a net needs before this setting stops removing 'Harvest'.",
+        description = "",
         section = netsSection,
         position = 1
     )
@@ -249,7 +249,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "tridentWarningGuard",
         name = "Trident warning guard",
-        description = "Deep-water dialog in the hunting zone: wield-anyway line green, mouse clicks on \"Play it safe.\" blocked. Number keys still select either.",
+        description = "Deep-water dialog in the hunting zone: wield-anyway line green, \"Play it safe.\" blocked by mouse and number key.",
         section = gearSection,
         position = 0
     )
@@ -261,7 +261,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "highlightUnequippedTrident",
         name = "Highlight unequipped trident",
-        description = "Green inventory highlight in the hunting zone with none wielded.",
+        description = "",
         section = gearSection,
         position = 1
     )
@@ -297,7 +297,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "tunnelDialogGuard",
         name = "Tunnel dialog guard",
-        description = "Already-paid dialog: 'Enter instance.' green, mouse clicks on 'Don't enter.' blocked. Number keys still select either.",
+        description = "Already-paid dialog: 'Enter instance.' green, 'Don't enter.' blocked by mouse and number key.",
         section = gearSection,
         position = 4
     )
