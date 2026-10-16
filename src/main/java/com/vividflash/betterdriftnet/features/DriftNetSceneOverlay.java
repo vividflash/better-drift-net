@@ -29,12 +29,11 @@ import com.vividflash.betterdriftnet.TaggedFishMarker;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Shape;
+import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import net.runelite.api.Client;
 import net.runelite.api.GameObject;
 import net.runelite.api.NPC;
-import net.runelite.api.WorldView;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -44,14 +43,12 @@ import net.runelite.client.ui.overlay.OverlayUtil;
 @Singleton
 public class DriftNetSceneOverlay extends Overlay
 {
-    private final Client client;
     private final BetterDriftNetConfig config;
     private final DriftNetFeature feature;
 
     @Inject
-    DriftNetSceneOverlay(Client client, BetterDriftNetConfig config, DriftNetFeature feature)
+    DriftNetSceneOverlay(BetterDriftNetConfig config, DriftNetFeature feature)
     {
-        this.client = client;
         this.config = config;
         this.feature = feature;
         setPosition(OverlayPosition.DYNAMIC);
@@ -61,12 +58,12 @@ public class DriftNetSceneOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        if (!DriftNetFeature.inDriftNetArea(client))
+        if (!feature.isInArea())
         {
             return null;
         }
 
-        if (config.showNetClickbox())
+        if (feature.isShowNetClickbox())
         {
             for (GameObject net : feature.getNets())
             {
@@ -77,24 +74,21 @@ public class DriftNetSceneOverlay extends Overlay
             }
         }
 
-        TaggedFishMarker marker = config.taggedFishMarker();
-        if (!config.hideTaggedFish() || marker == TaggedFishMarker.OFF)
+        // Collected once per game tick by the feature; the settings are
+        // checked here, so a change to them applies on the next frame.
+        List<NPC> tagged = feature.getTaggedShoals();
+        if (tagged.isEmpty() || !feature.isHideTaggedFish())
+        {
+            return null;
+        }
+        TaggedFishMarker marker = feature.getTaggedFishMarker();
+        if (marker == TaggedFishMarker.OFF)
         {
             return null;
         }
 
-        WorldView worldView = client.getTopLevelWorldView();
-        if (worldView == null)
+        for (NPC npc : tagged)
         {
-            return null;
-        }
-
-        for (NPC npc : worldView.npcs())
-        {
-            if (!feature.isTaggedShoal(npc))
-            {
-                continue;
-            }
             Shape shape = marker == TaggedFishMarker.TILE
                 ? npc.getCanvasTilePoly()
                 : npc.getConvexHull();

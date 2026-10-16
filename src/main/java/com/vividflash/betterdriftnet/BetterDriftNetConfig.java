@@ -33,13 +33,15 @@ import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
-@ConfigGroup("betterdriftnet")
+@ConfigGroup(BetterDriftNetConfig.GROUP)
 public interface BetterDriftNetConfig extends Config
 {
+    String GROUP = "betterdriftnet";
+
     @ConfigSection(
         name = "Interface",
         description = "",
-        position = 0,
+        position = 20,
         closedByDefault = true
     )
     String interfaceSection = "interfaceSection";
@@ -47,7 +49,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigSection(
         name = "Nets",
         description = "",
-        position = 1,
+        position = 30,
         closedByDefault = true
     )
     String netsSection = "netsSection";
@@ -57,7 +59,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Tagged fish hiding",
         description = "A tagged shoal is not drawn and has no menu entries until its tag expires.",
         section = netsSection,
-        position = 2
+        position = 30
     )
     default boolean hideTaggedFish()
     {
@@ -69,7 +71,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Tagged fish marking",
         description = "",
         section = netsSection,
-        position = 3
+        position = 40
     )
     default TaggedFishMarker taggedFishMarker()
     {
@@ -82,7 +84,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Tagged fish colour",
         description = "",
         section = netsSection,
-        position = 4
+        position = 50
     )
     default Color taggedFishColour()
     {
@@ -94,7 +96,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Prioritize untagged fish",
         description = "Where shoals overlap, the untagged one takes left-click.",
         section = netsSection,
-        position = 5
+        position = 60
     )
     default boolean prioritizeUntaggedFish()
     {
@@ -108,7 +110,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Tag lasts",
         description = "How long a prodded shoal counts as tagged. Should match how long it stays agitated in game.",
         section = netsSection,
-        position = 6
+        position = 70
     )
     @Range(min = 10, max = 100)
     @Units(Units.TICKS)
@@ -122,11 +124,11 @@ public interface BetterDriftNetConfig extends Config
         name = "Show net clickbox",
         description = "",
         section = netsSection,
-        position = 7
+        position = 80
     )
     default boolean showNetClickbox()
     {
-        return false;
+        return true;
     }
 
     @Alpha
@@ -135,7 +137,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Net clickbox",
         description = "",
         section = netsSection,
-        position = 8
+        position = 90
     )
     default Color netClickbox()
     {
@@ -145,7 +147,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigSection(
         name = "Gear and supplies",
         description = "",
-        position = 2,
+        position = 40,
         closedByDefault = true
     )
     String gearSection = "gearSection";
@@ -154,7 +156,7 @@ public interface BetterDriftNetConfig extends Config
         keyName = "showBlockMessages",
         name = "Show block messages",
         description = "",
-        position = -1
+        position = 10
     )
     default boolean showBlockMessages()
     {
@@ -166,7 +168,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Block claim option",
         description = "",
         section = interfaceSection,
-        position = 0
+        position = 10
     )
     default boolean blockClaimOption()
     {
@@ -178,7 +180,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Claim option text",
         description = "Case-insensitive.",
         section = interfaceSection,
-        position = 1
+        position = 20
     )
     default String claimOptionText()
     {
@@ -190,7 +192,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Block moving fish out",
         description = "Removes 'Move to Inventory' on caught fish until you bank.",
         section = interfaceSection,
-        position = 2
+        position = 30
     )
     default boolean blockMovingFishOut()
     {
@@ -202,7 +204,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Still movable items",
         description = "Comma-separated, * wildcards, case-insensitive.",
         section = interfaceSection,
-        position = 3
+        position = 40
     )
     default String stillMovableItems()
     {
@@ -212,9 +214,9 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "bankBeforeClose",
         name = "Bank before close",
-        description = "From harvest to the banking prompt, blocks world clicks and the window's X. The bin's destroy prompt lifts it.",
+        description = "From harvest to the banking prompt, blocks world clicks, the window's X and Escape. The bin's destroy prompt lifts it.",
         section = interfaceSection,
-        position = 4
+        position = 50
     )
     default boolean bankBeforeClose()
     {
@@ -226,7 +228,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Block early harvest",
         description = "Removes the 'Harvest' option on a net under the threshold. At or above it the entry is left as the game orders it.",
         section = netsSection,
-        position = 0
+        position = 10
     )
     default boolean blockEarlyHarvest()
     {
@@ -238,7 +240,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Min fish to harvest",
         description = "",
         section = netsSection,
-        position = 1
+        position = 20
     )
     @Range(min = 1, max = 10)
     default int minFishToHarvest()
@@ -251,7 +253,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Trident warning guard",
         description = "Deep-water dialog in the hunting zone: wield-anyway line green, \"Play it safe.\" blocked by mouse and number key.",
         section = gearSection,
-        position = 0
+        position = 10
     )
     default boolean tridentWarningGuard()
     {
@@ -263,7 +265,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Highlight unequipped trident",
         description = "",
         section = gearSection,
-        position = 1
+        position = 20
     )
     default boolean highlightUnequippedTrident()
     {
@@ -275,7 +277,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Chasing weapon names",
         description = "Comma-separated, * wildcards, case-insensitive.",
         section = gearSection,
-        position = 2
+        position = 30
     )
     default String chasingWeaponNames()
     {
@@ -287,7 +289,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Mark low numulite",
         description = "Red inventory mark in the hunting zone under 5 numulite.",
         section = gearSection,
-        position = 3
+        position = 40
     )
     default boolean markLowNumulite()
     {
@@ -299,7 +301,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Tunnel dialog guard",
         description = "Already-paid dialog: 'Enter instance.' green, 'Don't enter.' blocked by mouse and number key.",
         section = gearSection,
-        position = 4
+        position = 50
     )
     default boolean tunnelDialogGuard()
     {
@@ -311,7 +313,7 @@ public interface BetterDriftNetConfig extends Config
         name = "Deprio door while armed",
         description = "Plant door: 'Navigate' and 'Examine' below 'Walk here' while your weapon slot is filled.",
         section = gearSection,
-        position = 5
+        position = 60
     )
     default boolean deprioDoorWhileArmed()
     {

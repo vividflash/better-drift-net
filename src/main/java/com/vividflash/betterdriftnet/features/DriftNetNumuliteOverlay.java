@@ -30,7 +30,6 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import net.runelite.api.Client;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.widgets.WidgetItem;
 import net.runelite.client.ui.overlay.WidgetItemOverlay;
@@ -45,23 +44,23 @@ public class DriftNetNumuliteOverlay extends WidgetItemOverlay
     private static final Color FILL = new Color(178, 34, 34, 70);
     private static final Color OUTLINE = new Color(178, 34, 34, 200);
 
-    private final Client client;
     private final BetterDriftNetConfig config;
+    private final DriftNetFeature feature;
 
     @Inject
-    DriftNetNumuliteOverlay(Client client, BetterDriftNetConfig config)
+    DriftNetNumuliteOverlay(BetterDriftNetConfig config, DriftNetFeature feature)
     {
-        this.client = client;
         this.config = config;
+        this.feature = feature;
         showOnInventory();
     }
 
     @Override
     public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
     {
-        if (!config.markLowNumulite() || itemId != ItemID.FOSSIL_NUMULITE
-            || widgetItem.getQuantity() >= DriftNetFeature.BANKING_FEE
-            || !DriftNetFeature.inDriftNetFishingZone(client))
+        if (itemId != ItemID.FOSSIL_NUMULITE || !feature.isInFishingZone()
+            || !config.markLowNumulite()
+            || widgetItem.getQuantity() >= DriftNetFeature.BANKING_FEE)
         {
             return;
         }

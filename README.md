@@ -12,7 +12,7 @@ removed menu options are silent.
 **Interface**
 
 - **Bank before close**: between harvesting and the banking confirmation,
-  blocks clicks on the game world and on the window's X. The bin's destroy
+  blocks clicks on the game world, the window's X and Escape. The bin's destroy
   confirmation lifts the block.
 - **Block claim option**: removes `Take all` from the catch interface. The
   text to match is set in **Claim option text**.
@@ -29,8 +29,8 @@ removed menu options are silent.
 - **Show net clickbox**: outlines where each net accepts clicks, in the
   **Net clickbox** colour.
 - **Tagged fish hiding**: a shoal you have prodded is not drawn and has no
-  menu entries until its tag expires. **Tag lasts** sets how long that is,
-  default `50` ticks.
+  menu entries until it reaches a net or its tag expires. **Tag lasts** sets
+  how long that is, default `50` ticks.
 - **Tagged fish marking**: marks where a hidden shoal is, `Off`, `Hull` or
   `Tile`, in the **Tagged fish colour**.
 

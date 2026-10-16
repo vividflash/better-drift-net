@@ -26,8 +26,16 @@ package com.vividflash.betterdriftnet;
 
 import com.google.inject.Provides;
 import com.vividflash.betterdriftnet.features.DriftNetFeature;
+import java.awt.Color;
 import javax.inject.Inject;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.GameState;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.client.chat.ChatMessageBuilder;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -61,6 +69,17 @@ public class BetterDriftNetPlugin extends Plugin
      */
     private static final String[] DEAD_KEYS = {"highlightFullNets", "highlightAnnette"};
 
+    /** Marks the release a profile has already been told about. */
+    private static final String LAST_SEEN_VERSION_KEY = "lastSeenVersion";
+
+    /** The release the notice below belongs to, not the packaged version. */
+    private static final String VERSION = "1.4";
+    private static final String UPDATE_MESSAGE =
+        "Better Drift Net v1.4: Several Performance Improvements, Escape is now blocked before Banking Fish";
+
+    /** Dark red, for legibility against the opaque chatbox background. */
+    private static final Color NOTICE_COLOR = new Color(0x480000);
+
     @Inject
     private DriftNetFeature driftNetFeature;
 
@@ -70,9 +89,15 @@ public class BetterDriftNetPlugin extends Plugin
     @Inject
     private ConfigManager configManager;
 
+    @Inject
+    private ChatMessageManager chatMessageManager;
+
+    private boolean updateChecked;
+
     @Override
     protected void startUp()
     {
+        updateChecked = false;
         migrateOnce();
         driftNetFeature.startUp();
     }
@@ -81,6 +106,42 @@ public class BetterDriftNetPlugin extends Plugin
     protected void shutDown()
     {
         driftNetFeature.shutDown();
+    }
+
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event)
+    {
+        if (event.getGameState() == GameState.LOGGED_IN)
+        {
+            maybeAnnounceUpdate();
+        }
+    }
+
+    /**
+     * One-time post-update notice on first login. A profile that carries no
+     * version yet is told as well, so a fresh install reads the current notice once.
+     */
+    private void maybeAnnounceUpdate()
+    {
+        if (updateChecked)
+        {
+            return;
+        }
+        updateChecked = true;
+
+        String lastSeen = configManager.getConfiguration(CONFIG_GROUP, LAST_SEEN_VERSION_KEY);
+        if (VERSION.equals(lastSeen))
+        {
+            return;
+        }
+
+        configManager.setConfiguration(CONFIG_GROUP, LAST_SEEN_VERSION_KEY, VERSION);
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.CONSOLE)
+            .runeLiteFormattedMessage(new ChatMessageBuilder()
+                .append(NOTICE_COLOR, UPDATE_MESSAGE)
+                .build())
+            .build());
     }
 
     /**
