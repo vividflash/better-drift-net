@@ -24,8 +24,8 @@
  */
 package com.vividflash.betterdriftnet.features;
 
-import com.vividflash.betterdriftnet.BetterDriftNetConfig;
 import com.vividflash.betterdriftnet.TaggedFishMarker;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Shape;
@@ -43,13 +43,11 @@ import net.runelite.client.ui.overlay.OverlayUtil;
 @Singleton
 public class DriftNetSceneOverlay extends Overlay
 {
-    private final BetterDriftNetConfig config;
     private final DriftNetFeature feature;
 
     @Inject
-    DriftNetSceneOverlay(BetterDriftNetConfig config, DriftNetFeature feature)
+    DriftNetSceneOverlay(DriftNetFeature feature)
     {
-        this.config = config;
         this.feature = feature;
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_SCENE);
@@ -65,13 +63,9 @@ public class DriftNetSceneOverlay extends Overlay
 
         if (feature.isShowNetClickbox())
         {
-            for (GameObject net : feature.getNets())
-            {
-                if (net != null && net.getClickbox() != null)
-                {
-                    OverlayUtil.renderPolygon(graphics, net.getClickbox(), config.netClickbox());
-                }
-            }
+            Color clickboxColour = feature.getNetClickboxColour();
+            renderClickbox(graphics, feature.getNet1(), clickboxColour);
+            renderClickbox(graphics, feature.getNet2(), clickboxColour);
         }
 
         // Collected once per game tick by the feature; the settings are
@@ -87,6 +81,7 @@ public class DriftNetSceneOverlay extends Overlay
             return null;
         }
 
+        Color taggedColour = feature.getTaggedFishColour();
         for (NPC npc : tagged)
         {
             Shape shape = marker == TaggedFishMarker.TILE
@@ -94,9 +89,22 @@ public class DriftNetSceneOverlay extends Overlay
                 : npc.getConvexHull();
             if (shape != null)
             {
-                OverlayUtil.renderPolygon(graphics, shape, config.taggedFishColour());
+                OverlayUtil.renderPolygon(graphics, shape, taggedColour);
             }
         }
         return null;
+    }
+
+    private static void renderClickbox(Graphics2D graphics, GameObject net, Color colour)
+    {
+        if (net == null)
+        {
+            return;
+        }
+        Shape clickbox = net.getClickbox();
+        if (clickbox != null)
+        {
+            OverlayUtil.renderPolygon(graphics, clickbox, colour);
+        }
     }
 }

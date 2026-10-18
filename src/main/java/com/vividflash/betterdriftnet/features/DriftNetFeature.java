@@ -26,6 +26,7 @@ package com.vividflash.betterdriftnet.features;
 
 import com.vividflash.betterdriftnet.BetterDriftNetConfig;
 import com.vividflash.betterdriftnet.TaggedFishMarker;
+import java.awt.Color;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,6 +36,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -203,6 +205,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     // Config keys whose change refreshes the tagged shoal list at once.
     private static final String HIDE_TAGGED_KEY = "hideTaggedFish";
     private static final String MARKER_KEY = "taggedFishMarker";
+    private static final String CHASING_WEAPONS_KEY = "chasingWeaponNames";
 
     /** Weapon slot item id when the worn container has not been read yet. */
     private static final int WEAPON_UNKNOWN = -2;
@@ -325,9 +328,22 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     private volatile boolean tunnelDialogGuard;
     private volatile boolean deprioDoorWhileArmed;
     private volatile boolean highlightUnequippedTrident;
+    private volatile boolean bankBeforeClose;
+    private volatile boolean markLowNumulite;
+    private volatile Color netClickboxColour;
+    private volatile Color taggedFishColour;
 
     private boolean bankedSinceOpen;
     private boolean interfaceWasOpen;
+
+    // The drift net window state last read for the menu build, and the client
+    // cycle it was read in. Client thread only.
+    private int openReadCycle = -1;
+    private boolean openRead;
+
+    // Door entries moved in the last logged deprio, 0 once the door leaves the
+    // menu. Client thread only, read for logging alone.
+    private int doorMovedLogged;
     private boolean blockMessageSent;
 
     // Area and zone flags, computed once per game tick so the per-frame and
@@ -343,6 +359,15 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     // off (or the plugin stopping) can put them back. Client thread only.
     private final Map<Widget, Integer> tunnelHighlights = new IdentityHashMap<>();
     private final Map<Widget, Integer> tridentHighlights = new IdentityHashMap<>();
+
+    // The dialog the guards last parsed (its lines, their text, the guards that
+    // applied and the digits found), so an unchanged dialog is not parsed again
+    // every client tick. Null when nothing is remembered. Client thread only.
+    private Widget[] parsedLines;
+    private String[] parsedTexts;
+    private boolean parsedTunnel;
+    private boolean parsedTrident;
+    private int parsedDigits;
 
     // Lets a scene read queued by startUp skip itself once the plugin is off.
     private volatile boolean started;
@@ -372,6 +397,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         // True so a dialog already open at startup is still checked; the first
         // client tick clears it when there is none.
         chatOptionsOpen = true;
+        parsedTexts = null;
         // ConfigChanged does not fire while the plugin is off, so a verdict
         // cached before a disable could be stale by now.
         tridentOverlay.clearTridentCache();
@@ -430,8 +456,16 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         }
         readWornWeapon(client.getItemContainer(InventoryID.WORN));
         // Set now rather than on the next game tick, so the overlays draw at once.
-        inArea = inDriftNetArea(client);
-        inFishingZone = inArea && inDriftNetFishingZone(client);
+        WorldPoint point = playerPoint(client);
+        inArea = inDriftNetArea(client, point);
+        inFishingZone = inArea && inDriftNetFishingZone(point);
+        if (!inArea)
+        {
+            // The nets only exist underwater, and their spawn events cover a later load.
+            log.debug("[scene] readLoadedScene inArea={} inFishingZone={} net1={} net2={} wornWeaponId={}",
+                inArea, inFishingZone, net1Object != null, net2Object != null, wornWeaponId);
+            return;
+        }
 
         WorldView worldView = client.getTopLevelWorldView();
         Scene scene = worldView == null ? null : worldView.getScene();
@@ -482,11 +516,15 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         tunnelDialogGuard = config.tunnelDialogGuard();
         deprioDoorWhileArmed = config.deprioDoorWhileArmed();
         highlightUnequippedTrident = config.highlightUnequippedTrident();
+        bankBeforeClose = config.bankBeforeClose();
+        markLowNumulite = config.markLowNumulite();
+        netClickboxColour = config.netClickbox();
+        taggedFishColour = config.taggedFishColour();
         log.debug("[config] hideTagged={} prioritizeUntagged={} marker={} claim={} fishMove={} earlyHarvest={} min={} "
                 + "tridentGuard={} tunnelGuard={} doorDeprio={} bankBeforeClose={}",
             hideTaggedFish, prioritizeUntaggedFish, taggedFishMarker, blockClaimOption, blockMovingFishOut,
             blockEarlyHarvest, minFishToHarvest, tridentWarningGuard, tunnelDialogGuard, deprioDoorWhileArmed,
-            config.bankBeforeClose());
+            bankBeforeClose);
     }
 
     /**
@@ -524,6 +562,21 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     {
         Menu menu = client.getMenu();
         MenuEntry[] entries = menu.getMenuEntries();
+
+        // Most menus hold only one kind, so check before building any list.
+        boolean hasTagged = false;
+        boolean hasUntagged = false;
+        for (MenuEntry entry : entries)
+        {
+            int state = shoalState(entry);
+            hasTagged |= state == SHOAL_TAGGED;
+            hasUntagged |= state == SHOAL_UNTAGGED;
+        }
+        if (!hasTagged || !hasUntagged)
+        {
+            return;
+        }
+
         List<Integer> slots = new ArrayList<>();
         List<MenuEntry> tagged = new ArrayList<>();
         List<MenuEntry> untagged = new ArrayList<>();
@@ -546,34 +599,35 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             }
         }
 
-        if (tagged.isEmpty() || untagged.isEmpty())
-        {
-            return;
-        }
-
         // Entries run bottom-to-top, so the tagged ones take the lower slots.
-        MenuEntry[] reordered = entries.clone();
+        // Written back into the array the menu handed out, which is a copy.
         int slot = 0;
+        int moved = 0;
+        boolean changed = false;
         for (MenuEntry entry : tagged)
         {
-            reordered[slots.get(slot++)] = entry;
+            int at = slots.get(slot++);
+            if (entries[at] != entry)
+            {
+                moved++;
+                changed |= !entry.equals(entries[at]);
+            }
+            entries[at] = entry;
         }
         for (MenuEntry entry : untagged)
         {
-            reordered[slots.get(slot++)] = entry;
-        }
-        if (!Arrays.equals(reordered, entries))
-        {
-            int moved = 0;
-            for (int i = 0; i < entries.length; i++)
+            int at = slots.get(slot++);
+            if (entries[at] != entry)
             {
-                if (reordered[i] != entries[i])
-                {
-                    moved++;
-                }
+                moved++;
+                changed |= !entry.equals(entries[at]);
             }
+            entries[at] = entry;
+        }
+        if (changed)
+        {
             log.debug("[shoal] reordered, moved={}", moved);
-            menu.setMenuEntries(reordered);
+            menu.setMenuEntries(entries);
         }
     }
 
@@ -614,6 +668,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         MenuEntry[] entries = menu.getMenuEntries();
         if (!containsDoorEntry(entries))
         {
+            doorMovedLogged = 0;
             return;
         }
 
@@ -644,7 +699,13 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         MenuEntry[] reordered = rest.toArray(new MenuEntry[0]);
         if (!Arrays.equals(reordered, entries))
         {
-            log.debug("[door] deprioritized, moved={}", deprio.size());
+            // The menu is rebuilt every client tick while the door is hovered, so
+            // log once per hover rather than per rebuild.
+            if (deprio.size() != doorMovedLogged)
+            {
+                doorMovedLogged = deprio.size();
+                log.debug("[door] deprioritized, moved={}", doorMovedLogged);
+            }
             menu.setMenuEntries(reordered);
         }
     }
@@ -760,7 +821,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             armCloseGuard();
         }
         interfaceWasOpen = interfaceOpen;
-        setEscapeBlocked(interfaceOpen && !bankedSinceOpen && config.bankBeforeClose());
+        setEscapeBlocked(interfaceOpen && !bankedSinceOpen && bankBeforeClose);
     }
 
     /** Writes the Escape block flag, logging only when it changes. */
@@ -785,10 +846,12 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         if (!tunnelDialogGuard && !tunnelHighlights.isEmpty())
         {
             restoreHighlights(tunnelHighlights);
+            parsedTexts = null;
         }
         if (!tridentWarningGuard && !tridentHighlights.isEmpty())
         {
             restoreHighlights(tridentHighlights);
+            parsedTexts = null;
         }
         if (!chatOptionsOpen || (!tunnel && !trident))
         {
@@ -801,6 +864,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         {
             // Gone without a WidgetClosed (or never loaded): stop checking.
             chatOptionsOpen = false;
+            parsedTexts = null;
             setBlockedDialogDigits(0);
             forgetHighlights();
             return;
@@ -808,7 +872,13 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         Widget[] lines = options.getDynamicChildren();
         if (lines == null)
         {
+            parsedTexts = null;
             setBlockedDialogDigits(0);
+            return;
+        }
+        if (isParsedDialog(lines, tunnel, trident))
+        {
+            setBlockedDialogDigits(parsedDigits);
             return;
         }
 
@@ -823,7 +893,54 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             highlightTridentDialog(lines);
             digits |= blockedDigits(lines, firstTridentOptionIndex(lines), PLAY_IT_SAFE);
         }
+        rememberDialog(lines, tunnel, trident, digits);
         setBlockedDialogDigits(digits);
+    }
+
+    /**
+     * True when the dialog is the one parsed last: same line widgets, same
+     * text, same guards, and the highlighted lines still show the highlight.
+     */
+    private boolean isParsedDialog(Widget[] lines, boolean tunnel, boolean trident)
+    {
+        if (parsedTexts == null || parsedTunnel != tunnel || parsedTrident != trident
+            || parsedLines.length != lines.length)
+        {
+            return false;
+        }
+        for (int i = 0; i < lines.length; i++)
+        {
+            if (lines[i] != parsedLines[i] || (lines[i] != null && !Objects.equals(lines[i].getText(), parsedTexts[i])))
+            {
+                return false;
+            }
+        }
+        return stillHighlighted(tunnelHighlights) && stillHighlighted(tridentHighlights);
+    }
+
+    private static boolean stillHighlighted(Map<Widget, Integer> highlights)
+    {
+        for (Widget line : highlights.keySet())
+        {
+            if (line.getTextColor() != HIGHLIGHT_GREEN)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void rememberDialog(Widget[] lines, boolean tunnel, boolean trident, int digits)
+    {
+        parsedLines = lines.clone();
+        parsedTexts = new String[lines.length];
+        for (int i = 0; i < lines.length; i++)
+        {
+            parsedTexts[i] = lines[i] == null ? null : lines[i].getText();
+        }
+        parsedTunnel = tunnel;
+        parsedTrident = trident;
+        parsedDigits = digits;
     }
 
     /** Writes the blocked digit mask, logging only when it changes. */
@@ -890,11 +1007,11 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         // The window check is a widget read, so it only runs for a matching entry.
         if (isBlockedClaim(entry))
         {
-            return isDriftNetOpen() ? "claim" : null;
+            return isDriftNetOpenThisCycle() ? "claim" : null;
         }
         if (isBlockedFishMove(entry))
         {
-            return isDriftNetOpen() ? "fish move" : null;
+            return isDriftNetOpenThisCycle() ? "fish move" : null;
         }
         return null;
     }
@@ -962,10 +1079,15 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         }
     }
 
-    /** The two drift net objects currently in the scene, either may be null. */
-    GameObject[] getNets()
+    /** The drift net objects currently in the scene, either may be null. */
+    GameObject getNet1()
     {
-        return new GameObject[] {net1Object, net2Object};
+        return net1Object;
+    }
+
+    GameObject getNet2()
+    {
+        return net2Object;
     }
 
     @Subscribe
@@ -1000,9 +1122,12 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         }
         int expiry = client.getTickCount() + config.tagTimeoutTicks();
         taggedUntilTick.put(lastShoalInteraction.getIndex(), expiry);
-        Player local = client.getLocalPlayer();
-        log.debug("[tag] tagged index={} npcAt={} playerAt={} expiresTick={}", lastShoalInteraction.getIndex(),
-            lastShoalInteraction.getWorldLocation(), local == null ? null : local.getWorldLocation(), expiry);
+        if (log.isDebugEnabled())
+        {
+            Player local = client.getLocalPlayer();
+            log.debug("[tag] tagged index={} npcAt={} playerAt={} expiresTick={}", lastShoalInteraction.getIndex(),
+                lastShoalInteraction.getWorldLocation(), local == null ? null : local.getWorldLocation(), expiry);
+        }
         refreshTaggedShoals();
     }
 
@@ -1027,7 +1152,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             log.debug("[shoal] despawned index={} at={} tagDropped={}", event.getNpc().getIndex(),
                 WorldPoint.fromLocalInstance(client, event.getNpc().getLocalLocation()), tagDropped);
         }
-        if (!taggedShoals.isEmpty())
+        if (tagDropped && !taggedShoals.isEmpty())
         {
             taggedShoals.remove(event.getNpc());
         }
@@ -1040,9 +1165,10 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     @Subscribe
     public void onGameTick(GameTick event)
     {
-        inArea = inDriftNetArea(client);
+        WorldPoint point = playerPoint(client);
+        inArea = inDriftNetArea(client, point);
         // The zone lies inside the area, so outside it the zone check is skipped.
-        inFishingZone = inArea && inDriftNetFishingZone(client);
+        inFishingZone = inArea && inDriftNetFishingZone(point);
 
         // Read only for the early-harvest guard; turned on, it is unread (and
         // so allows the harvest) until the next tick.
@@ -1093,10 +1219,11 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             return;
         }
         int endsAt = client.getTickCount() + ENTRY_GRACE_TICKS;
-        for (NPC npc : worldView.npcs())
+        // Looks the tagged shoals up by index instead of sweeping every NPC.
+        for (Map.Entry<Integer, Integer> tag : taggedUntilTick.entrySet())
         {
-            Integer expiry = npc == null ? null : taggedUntilTick.get(npc.getIndex());
-            if (expiry == null || expiry <= endsAt)
+            NPC npc = worldView.npcs().byIndex(tag.getKey());
+            if (npc == null || tag.getValue() <= endsAt)
             {
                 continue;
             }
@@ -1108,7 +1235,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             boolean atNet1 = NET1_ENTRY.equals(wp);
             if (atNet1 || NET2_ENTRY.equals(wp))
             {
-                taggedUntilTick.put(npc.getIndex(), endsAt);
+                tag.setValue(endsAt);
                 log.debug("[tag] shoal reached net{}, tag ends tick={} index={} at={}", atNet1 ? 1 : 2, endsAt, npc.getIndex(), wp);
             }
         }
@@ -1175,9 +1302,10 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         {
             return;
         }
-        for (NPC npc : worldView.npcs())
+        for (Integer index : taggedUntilTick.keySet())
         {
-            if (isTaggedShoal(npc))
+            NPC npc = worldView.npcs().byIndex(index);
+            if (npc != null && npc.getId() == NpcID.FOSSIL_FISH_SHOAL)
             {
                 taggedShoals.add(npc);
             }
@@ -1208,6 +1336,21 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     boolean isHighlightUnequippedTrident()
     {
         return highlightUnequippedTrident;
+    }
+
+    boolean isMarkLowNumulite()
+    {
+        return markLowNumulite;
+    }
+
+    Color getNetClickboxColour()
+    {
+        return netClickboxColour;
+    }
+
+    Color getTaggedFishColour()
+    {
+        return taggedFishColour;
     }
 
     /** True in the underwater region, as of the last game tick. */
@@ -1252,7 +1395,10 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         if (BetterDriftNetConfig.GROUP.equals(event.getGroup()))
         {
             refreshConfig();
-            tridentOverlay.clearTridentCache();
+            if (CHASING_WEAPONS_KEY.equals(event.getKey()))
+            {
+                tridentOverlay.clearTridentCache();
+            }
             if (HIDE_TAGGED_KEY.equals(event.getKey()) || MARKER_KEY.equals(event.getKey()))
             {
                 // Collected per game tick; this draws a setting turned on
@@ -1307,12 +1453,13 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             return;
         }
 
-        if (!inDriftNetArea())
+        WorldPoint point = playerPoint(client);
+        if (!inDriftNetArea(client, point))
         {
             return;
         }
 
-        if (tridentWarningGuard && inDriftNetFishingZone() && isPlayItSafeClick(event))
+        if (tridentWarningGuard && inDriftNetFishingZone(point) && isPlayItSafeClick(event))
         {
             event.consume();
             log.debug("[dialog] blocked Play it safe click");
@@ -1324,7 +1471,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
             return;
         }
 
-        if (!isDriftNetOpen() || !config.bankBeforeClose() || bankedSinceOpen)
+        if (!isDriftNetOpen() || !bankBeforeClose || bankedSinceOpen)
         {
             return;
         }
@@ -1731,6 +1878,7 @@ public class DriftNetFeature implements RenderCallback, KeyListener
     /** The dialog is gone, and its lines with it: nothing left to restore. */
     private void forgetHighlights()
     {
+        parsedTexts = null;
         tunnelHighlights.clear();
         tridentHighlights.clear();
     }
@@ -1819,37 +1967,37 @@ public class DriftNetFeature implements RenderCallback, KeyListener
         return w != null && !w.isHidden();
     }
 
-    private boolean inDriftNetArea()
+    /** One widget read per client cycle, for the menu build that asks once per matching entry. */
+    private boolean isDriftNetOpenThisCycle()
     {
-        return inDriftNetArea(client);
+        int cycle = client.getGameCycle();
+        if (cycle != openReadCycle)
+        {
+            openReadCycle = cycle;
+            openRead = isDriftNetOpen();
+        }
+        return openRead;
     }
 
     /** Cached once per game tick in inArea for the per-frame paths. */
-    static boolean inDriftNetArea(Client client)
+    static boolean inDriftNetArea(Client client, WorldPoint point)
     {
         WorldView worldView = client.getTopLevelWorldView();
         if (worldView == null || !worldView.isInstance())
         {
             return false;
         }
-        WorldPoint point = playerPoint(client);
         return point != null && point.getRegionID() == UNDERWATER_REGION;
     }
 
     /**
      * The drift-net fishing zone proper. The interface-based guards self-scope
      * via the open window, but the trident dialog appears anywhere underwater,
-     * so it needs the tighter box.
+     * so it needs the tighter box. Cached once per game tick in inFishingZone
+     * for the per-frame paths.
      */
-    private boolean inDriftNetFishingZone()
+    static boolean inDriftNetFishingZone(WorldPoint point)
     {
-        return inDriftNetFishingZone(client);
-    }
-
-    /** Cached once per game tick in inFishingZone for the per-frame paths. */
-    static boolean inDriftNetFishingZone(Client client)
-    {
-        WorldPoint point = playerPoint(client);
         return point != null
             && point.getX() >= NET_ZONE_X_MIN && point.getX() <= NET_ZONE_X_MAX
             && point.getY() >= NET_ZONE_Y_MIN && point.getY() <= NET_ZONE_Y_MAX;

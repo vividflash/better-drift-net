@@ -111,13 +111,7 @@ public class DriftNetTridentOverlay extends WidgetItemOverlay
         {
             return false;
         }
-        int requests = clearRequests;
-        if (requests != clearsSeen)
-        {
-            clearsSeen = requests;
-            tridentById = new byte[0];
-            checkedWeaponId = NOT_CHECKED;
-        }
+        applyClearRequests();
         if (itemId < tridentById.length && tridentById[itemId] != UNCHECKED)
         {
             return tridentById[itemId] == TRIDENT;
@@ -137,10 +131,22 @@ public class DriftNetTridentOverlay extends WidgetItemOverlay
         clearRequests++;
     }
 
+    private void applyClearRequests()
+    {
+        int requests = clearRequests;
+        if (requests != clearsSeen)
+        {
+            clearsSeen = requests;
+            tridentById = new byte[0];
+            checkedWeaponId = NOT_CHECKED;
+        }
+    }
+
     private boolean tridentEquipped()
     {
         // Cached by the feature from the worn container's changes; -1 is an
         // empty slot.
+        applyClearRequests();
         int weaponId = feature.equippedWeaponId();
         if (weaponId != checkedWeaponId)
         {

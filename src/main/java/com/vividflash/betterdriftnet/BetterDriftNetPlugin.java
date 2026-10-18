@@ -46,7 +46,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 )
 public class BetterDriftNetPlugin extends Plugin
 {
-    private static final String CONFIG_GROUP = "betterdriftnet";
+    private static final String CONFIG_GROUP = BetterDriftNetConfig.GROUP;
     private static final String ALLOW_LIST_KEY = "stillMovableItems";
 
     /**

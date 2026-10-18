@@ -24,7 +24,6 @@
  */
 package com.vividflash.betterdriftnet.features;
 
-import com.vividflash.betterdriftnet.BetterDriftNetConfig;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -44,13 +43,11 @@ public class DriftNetNumuliteOverlay extends WidgetItemOverlay
     private static final Color FILL = new Color(178, 34, 34, 70);
     private static final Color OUTLINE = new Color(178, 34, 34, 200);
 
-    private final BetterDriftNetConfig config;
     private final DriftNetFeature feature;
 
     @Inject
-    DriftNetNumuliteOverlay(BetterDriftNetConfig config, DriftNetFeature feature)
+    DriftNetNumuliteOverlay(DriftNetFeature feature)
     {
-        this.config = config;
         this.feature = feature;
         showOnInventory();
     }
@@ -59,7 +56,7 @@ public class DriftNetNumuliteOverlay extends WidgetItemOverlay
     public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
     {
         if (itemId != ItemID.FOSSIL_NUMULITE || !feature.isInFishingZone()
-            || !config.markLowNumulite()
+            || !feature.isMarkLowNumulite()
             || widgetItem.getQuantity() >= DriftNetFeature.BANKING_FEE)
         {
             return;
