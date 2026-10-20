@@ -27,7 +27,6 @@ package com.vividflash.betterdriftnet.features;
 import com.vividflash.betterdriftnet.BetterDriftNetConfig;
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.Rectangle;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +34,9 @@ import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.widgets.WidgetItem;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.WidgetItemOverlay;
@@ -53,33 +55,29 @@ public class DriftNetTridentOverlay extends WidgetItemOverlay
     private static final byte NOT_TRIDENT = 1;
     private static final byte TRIDENT = 2;
 
-    /** No weapon id checked since the last cache clear. */
-    private static final int NOT_CHECKED = Integer.MIN_VALUE;
-
     private final BetterDriftNetConfig config;
+    private final Client client;
     private final ItemManager itemManager;
     private final DriftNetFeature feature;
 
-    // Trident verdict indexed by item id, grown on demand, so a lookup does not
-    // box the id. Only the client thread touches the array; a clear can arrive
-    // off it (config change), so it bumps a counter the lookup then acts on.
+    // Trident verdict indexed by item id, so a lookup does not box the id.
+    // Allocated and written by classify, on the client thread; rendering only
+    // reads it, and an id without a verdict draws nothing. A clear can arrive
+    // off the client thread (config change), so it bumps a counter that
+    // classify acts on; while one is pending, rendering draws nothing.
     private byte[] tridentById = new byte[0];
     private volatile int clearRequests;
     private int clearsSeen;
 
-    // The weapon id last checked and its verdict, so the equipped check is a
-    // field compare while the weapon stays the same.
-    private int checkedWeaponId = NOT_CHECKED;
-    private boolean weaponIsTrident;
-
-    // Rebuilt only when the chasing-weapon config text changes.
-    private String tridentListSource;
-    private List<Pattern> tridentPatterns = List.of();
+    // Compiled from the chasing-weapon config text by refreshPatterns, which
+    // runs on startUp and when that text changes, so rendering never reads config.
+    private volatile List<Pattern> tridentPatterns = List.of();
 
     @Inject
-    DriftNetTridentOverlay(BetterDriftNetConfig config, ItemManager itemManager, DriftNetFeature feature)
+    DriftNetTridentOverlay(BetterDriftNetConfig config, Client client, ItemManager itemManager, DriftNetFeature feature)
     {
         this.config = config;
+        this.client = client;
         this.itemManager = itemManager;
         this.feature = feature;
         showOnInventory();
@@ -89,46 +87,74 @@ public class DriftNetTridentOverlay extends WidgetItemOverlay
     public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
     {
         if (!feature.isInFishingZone() || !feature.isHighlightUnequippedTrident()
-            || tridentEquipped() || !isTrident(itemId))
+            || clearRequests != clearsSeen || !isTrident(itemId) || tridentEquipped())
         {
             return;
         }
 
-        Rectangle bounds = widgetItem.getCanvasBounds();
-        if (bounds == null)
-        {
-            return;
-        }
-        graphics.setColor(FILL);
-        graphics.fill(bounds);
-        graphics.setColor(OUTLINE);
-        graphics.draw(bounds);
+        ItemHighlight.draw(graphics, widgetItem, FILL, OUTLINE);
     }
 
+    /** The cached verdict; an id classify has not seen reads as no trident. */
     private boolean isTrident(int itemId)
     {
-        if (itemId < 0)
-        {
-            return false;
-        }
-        applyClearRequests();
-        if (itemId < tridentById.length && tridentById[itemId] != UNCHECKED)
-        {
-            return tridentById[itemId] == TRIDENT;
-        }
-
-        boolean trident = matchesList(itemManager.getItemComposition(itemId).getName());
-        if (itemId >= tridentById.length)
-        {
-            tridentById = Arrays.copyOf(tridentById, Math.max(itemId + 1, tridentById.length * 2));
-        }
-        tridentById[itemId] = trident ? TRIDENT : NOT_TRIDENT;
-        return trident;
+        return itemId >= 0 && itemId < tridentById.length && tridentById[itemId] == TRIDENT;
     }
 
+    private boolean tridentEquipped()
+    {
+        // Cached by the feature from the worn container's changes; -1 is an
+        // empty slot. The worn items are classified with the inventory's.
+        return isTrident(feature.equippedWeaponId());
+    }
+
+    /** Compiles the chasing-weapon list; clearTridentCache follows, as the verdicts are stale. */
+    void refreshPatterns()
+    {
+        tridentPatterns = DriftNetFeature.parseGlobList(config.chasingWeaponNames());
+    }
+
+    /** Drops every verdict; nothing is highlighted until the next classify. */
     void clearTridentCache()
     {
         clearRequests++;
+    }
+
+    /**
+     * Gives a container's items a verdict, on the client thread. The feature
+     * calls it for every held item before the highlight can draw: on entering
+     * the zone, on a container change there, and when the setting or the
+     * weapon list changes.
+     */
+    void classify(ItemContainer container)
+    {
+        if (container == null)
+        {
+            return;
+        }
+        applyClearRequests();
+        for (Item item : container.getItems())
+        {
+            int itemId = item.getId();
+            if (itemId < 0)
+            {
+                continue;
+            }
+            if (itemId >= tridentById.length)
+            {
+                tridentById = Arrays.copyOf(tridentById, Math.max(client.getItemCount(), itemId + 1));
+            }
+            if (tridentById[itemId] == UNCHECKED)
+            {
+                boolean trident = DriftNetFeature.matchesAny(tridentPatterns,
+                    itemManager.getItemComposition(itemId).getName().toLowerCase(Locale.ROOT));
+                tridentById[itemId] = trident ? TRIDENT : NOT_TRIDENT;
+                if (trident)
+                {
+                    log.debug("[trident] item {} is a chasing weapon", itemId);
+                }
+            }
+        }
     }
 
     private void applyClearRequests()
@@ -136,48 +162,8 @@ public class DriftNetTridentOverlay extends WidgetItemOverlay
         int requests = clearRequests;
         if (requests != clearsSeen)
         {
+            Arrays.fill(tridentById, UNCHECKED);
             clearsSeen = requests;
-            tridentById = new byte[0];
-            checkedWeaponId = NOT_CHECKED;
         }
-    }
-
-    private boolean tridentEquipped()
-    {
-        // Cached by the feature from the worn container's changes; -1 is an
-        // empty slot.
-        applyClearRequests();
-        int weaponId = feature.equippedWeaponId();
-        if (weaponId != checkedWeaponId)
-        {
-            weaponIsTrident = isTrident(weaponId);
-            checkedWeaponId = weaponId;
-            log.debug("[trident] equipped weapon {} is trident: {}", weaponId, weaponIsTrident);
-        }
-        return weaponIsTrident;
-    }
-
-    private boolean matchesList(String itemName)
-    {
-        String name = itemName.toLowerCase(Locale.ROOT);
-        for (Pattern pattern : tridentPatterns())
-        {
-            if (pattern.matcher(name).matches())
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private List<Pattern> tridentPatterns()
-    {
-        String csv = config.chasingWeaponNames();
-        if (!csv.equals(tridentListSource))
-        {
-            tridentListSource = csv;
-            tridentPatterns = DriftNetFeature.parseGlobList(csv);
-        }
-        return tridentPatterns;
     }
 }

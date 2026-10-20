@@ -26,7 +26,6 @@ package com.vividflash.betterdriftnet.features;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.Rectangle;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.gameval.ItemID;
@@ -62,14 +61,6 @@ public class DriftNetNumuliteOverlay extends WidgetItemOverlay
             return;
         }
 
-        Rectangle bounds = widgetItem.getCanvasBounds();
-        if (bounds == null)
-        {
-            return;
-        }
-        graphics.setColor(FILL);
-        graphics.fill(bounds);
-        graphics.setColor(OUTLINE);
-        graphics.draw(bounds);
+        ItemHighlight.draw(graphics, widgetItem, FILL, OUTLINE);
     }
 }

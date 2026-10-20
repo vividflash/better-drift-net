@@ -26,7 +26,11 @@ package com.vividflash.betterdriftnet;
 
 import com.google.inject.Binder;
 import com.google.inject.Provides;
+import com.vividflash.betterdriftnet.features.CloseGuard;
+import com.vividflash.betterdriftnet.features.DialogGuard;
 import com.vividflash.betterdriftnet.features.DriftNetFeature;
+import com.vividflash.betterdriftnet.features.NetTracker;
+import com.vividflash.betterdriftnet.features.ShoalTracker;
 import java.awt.Color;
 import javax.inject.Inject;
 import net.runelite.api.ChatMessageType;
@@ -48,7 +52,6 @@ import net.runelite.client.plugins.PluginDescriptor;
 public class BetterDriftNetPlugin extends Plugin
 {
     private static final String CONFIG_GROUP = BetterDriftNetConfig.GROUP;
-    private static final String ALLOW_LIST_KEY = "stillMovableItems";
 
     /**
      * Records which release last migrated the profile. Version-stamped rather
@@ -74,9 +77,9 @@ public class BetterDriftNetPlugin extends Plugin
     private static final String LAST_SEEN_VERSION_KEY = "lastSeenVersion";
 
     /** The release the notice below belongs to, not the packaged version. */
-    private static final String VERSION = "1.4";
+    private static final String VERSION = "1.5";
     private static final String UPDATE_MESSAGE =
-        "Better Drift Net v1.4: Several Performance Improvements, Escape is now blocked before Banking Fish";
+        "Better Drift Net v1.5: Bug Fixes and Performance Improvements";
 
     /** Dark red, for legibility against the opaque chatbox background. */
     private static final Color NOTICE_COLOR = new Color(0x480000);
@@ -162,8 +165,9 @@ public class BetterDriftNetPlugin extends Plugin
         // stored value, then write it back so the panel shows it.
         if (STALE_ALLOW_LIST.equals(config.stillMovableItems()))
         {
-            configManager.unsetConfiguration(CONFIG_GROUP, ALLOW_LIST_KEY);
-            configManager.setConfiguration(CONFIG_GROUP, ALLOW_LIST_KEY, config.stillMovableItems());
+            configManager.unsetConfiguration(CONFIG_GROUP, BetterDriftNetConfig.STILL_MOVABLE_ITEMS_KEY);
+            configManager.setConfiguration(CONFIG_GROUP, BetterDriftNetConfig.STILL_MOVABLE_ITEMS_KEY,
+                config.stillMovableItems());
         }
 
         // Last, so a step above can still read what it retires.
@@ -177,8 +181,13 @@ public class BetterDriftNetPlugin extends Plugin
     public void configure(Binder binder)
     {
         // The feature and its overlays inject each other; an explicit binding
-        // stops Guice from failing on the cycle with a just-in-time one.
+        // stops Guice from failing on the cycle with a just-in-time one. The
+        // feature's components are bound the same way.
         binder.bind(DriftNetFeature.class);
+        binder.bind(NetTracker.class);
+        binder.bind(ShoalTracker.class);
+        binder.bind(DialogGuard.class);
+        binder.bind(CloseGuard.class);
     }
 
     @Provides

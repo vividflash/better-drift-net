@@ -39,16 +39,20 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 
-/** Net clickboxes, and the hull of the tagged shoals {@link DriftNetFeature} hides. */
+/** Net clickboxes, and the hull of the tagged shoals {@link ShoalTracker} hides. */
 @Singleton
 public class DriftNetSceneOverlay extends Overlay
 {
     private final DriftNetFeature feature;
+    private final NetTracker nets;
+    private final ShoalTracker shoals;
 
     @Inject
-    DriftNetSceneOverlay(DriftNetFeature feature)
+    DriftNetSceneOverlay(DriftNetFeature feature, NetTracker nets, ShoalTracker shoals)
     {
         this.feature = feature;
+        this.nets = nets;
+        this.shoals = shoals;
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_SCENE);
     }
@@ -61,27 +65,27 @@ public class DriftNetSceneOverlay extends Overlay
             return null;
         }
 
-        if (feature.isShowNetClickbox())
+        if (nets.isShowNetClickbox())
         {
-            Color clickboxColour = feature.getNetClickboxColour();
-            renderClickbox(graphics, feature.getNet1(), clickboxColour);
-            renderClickbox(graphics, feature.getNet2(), clickboxColour);
+            Color clickboxColour = nets.getNetClickboxColour();
+            renderClickbox(graphics, nets.getNet1(), clickboxColour);
+            renderClickbox(graphics, nets.getNet2(), clickboxColour);
         }
 
-        // Collected once per game tick by the feature; the settings are
+        // Collected once per game tick by the shoal tracker; the settings are
         // checked here, so a change to them applies on the next frame.
-        List<NPC> tagged = feature.getTaggedShoals();
-        if (tagged.isEmpty() || !feature.isHideTaggedFish())
+        List<NPC> tagged = shoals.getTaggedShoals();
+        if (tagged.isEmpty() || !shoals.isHideTaggedFish())
         {
             return null;
         }
-        TaggedFishMarker marker = feature.getTaggedFishMarker();
+        TaggedFishMarker marker = shoals.getTaggedFishMarker();
         if (marker == TaggedFishMarker.OFF)
         {
             return null;
         }
 
-        Color taggedColour = feature.getTaggedFishColour();
+        Color taggedColour = shoals.getTaggedFishColour();
         for (NPC npc : tagged)
         {
             Shape shape = marker == TaggedFishMarker.TILE

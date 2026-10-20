@@ -38,6 +38,9 @@ public interface BetterDriftNetConfig extends Config
 {
     String GROUP = "betterdriftnet";
 
+    /** The fish-move allow list, also read by the migration and the config-change handler. */
+    String STILL_MOVABLE_ITEMS_KEY = "stillMovableItems";
+
     @ConfigSection(
         name = "Interface",
         description = "",
@@ -200,7 +203,7 @@ public interface BetterDriftNetConfig extends Config
     }
 
     @ConfigItem(
-        keyName = "stillMovableItems",
+        keyName = STILL_MOVABLE_ITEMS_KEY,
         name = "Still movable items",
         description = "Comma-separated, * wildcards, case-insensitive.",
         section = interfaceSection,
