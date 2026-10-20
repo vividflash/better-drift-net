@@ -24,6 +24,7 @@
  */
 package com.vividflash.betterdriftnet;
 
+import com.google.inject.Binder;
 import com.google.inject.Provides;
 import com.vividflash.betterdriftnet.features.DriftNetFeature;
 import java.awt.Color;
@@ -170,6 +171,14 @@ public class BetterDriftNetPlugin extends Plugin
         {
             configManager.unsetConfiguration(CONFIG_GROUP, dead);
         }
+    }
+
+    @Override
+    public void configure(Binder binder)
+    {
+        // The feature and its overlays inject each other; an explicit binding
+        // stops Guice from failing on the cycle with a just-in-time one.
+        binder.bind(DriftNetFeature.class);
     }
 
     @Provides
