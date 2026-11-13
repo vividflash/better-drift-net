@@ -26,7 +26,11 @@ package com.vividflash.betterdriftnet;
 
 import com.google.inject.Binder;
 import com.google.inject.Provides;
+import com.vividflash.betterdriftnet.features.CloseGuard;
+import com.vividflash.betterdriftnet.features.DialogGuard;
 import com.vividflash.betterdriftnet.features.DriftNetFeature;
+import com.vividflash.betterdriftnet.features.NetTracker;
+import com.vividflash.betterdriftnet.features.ShoalTracker;
 import java.awt.Color;
 import javax.inject.Inject;
 import net.runelite.api.ChatMessageType;
@@ -37,48 +41,41 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
 @PluginDescriptor(
     name = "Better Drift Net",
-    description = "Improved Drift net fishing and misclick guards",
+    description = "Improved Drift Net Fishing and Misclick Guards",
     tags = {"drift", "net", "driftnet", "fossil", "island", "underwater", "fishing", "hunter", "guard", "misclick"}
 )
 public class BetterDriftNetPlugin extends Plugin
 {
     private static final String CONFIG_GROUP = BetterDriftNetConfig.GROUP;
-    private static final String ALLOW_LIST_KEY = "stillMovableItems";
 
-    /**
-     * Records which release last migrated the profile. Version-stamped rather
-     * than a flag, so a later release can add a step and run again.
-     */
+    // Records which release last migrated the profile. Version-stamped rather than a flag, so a
+    // later release can add a step and run again.
     private static final String MIGRATION_KEY = "migratedVersion";
     private static final String MIGRATION_VERSION = "1.2";
 
-    /**
-     * The exception list 1.0 and 1.1 shipped. It named a clue box, which drift
-     * net fishing never produces.
-     */
+    // The exception list 1.0 and 1.1 shipped. It named a clue box, which drift net fishing never
+    // produces.
     private static final String STALE_ALLOW_LIST = "Pufferfish, Numulite, *fossil*, Clue box*";
 
-    /**
-     * Keys from settings 1.0 shipped and a later release dropped, cleared from
-     * profiles by the sweep. Add to this list and bump
-     * {@link #MIGRATION_VERSION} together.
-     */
+    // Keys from settings 1.0 shipped and a later release dropped, cleared from profiles by the
+    // sweep. Add to this list and bump MIGRATION_VERSION together.
     private static final String[] DEAD_KEYS = {"highlightFullNets", "highlightAnnette"};
 
-    /** Marks the release a profile has already been told about. */
+    // Marks the release a profile has already been told about.
     private static final String LAST_SEEN_VERSION_KEY = "lastSeenVersion";
 
-    /** The release the notice below belongs to, not the packaged version. */
-    private static final String VERSION = "1.4";
+    // The release the notice below belongs to, not the packaged version.
+    private static final String VERSION = "1.5";
     private static final String UPDATE_MESSAGE =
-        "Better Drift Net v1.4: Several Performance Improvements, Escape is now blocked before Banking Fish";
+        "Better Drift Net v" + VERSION + ": Bug Fixes and Performance Improvements";
 
-    /** Dark red, for legibility against the opaque chatbox background. */
+    // Dark red, for legibility against the opaque chatbox background.
     private static final Color NOTICE_COLOR = new Color(0x480000);
 
     @Inject
@@ -93,7 +90,8 @@ public class BetterDriftNetPlugin extends Plugin
     @Inject
     private ChatMessageManager chatMessageManager;
 
-    private boolean updateChecked;
+    // Written on startUp and on a profile switch, read on the client thread.
+    private volatile boolean updateChecked;
 
     @Override
     protected void startUp()
@@ -109,6 +107,15 @@ public class BetterDriftNetPlugin extends Plugin
         driftNetFeature.shutDown();
     }
 
+    // A plugin enabled in both profiles keeps running through a switch, so startUp does not run
+    // for the new profile: it is repaired here, and its notice is checked on the next LOGGED_IN state.
+    @Subscribe
+    public void onProfileChanged(ProfileChanged event)
+    {
+        migrateOnce();
+        updateChecked = false;
+    }
+
     @Subscribe
     public void onGameStateChanged(GameStateChanged event)
     {
@@ -118,10 +125,8 @@ public class BetterDriftNetPlugin extends Plugin
         }
     }
 
-    /**
-     * One-time post-update notice on first login. A profile that carries no
-     * version yet is told as well, so a fresh install reads the current notice once.
-     */
+    // One-time post-update notice on first login. A profile that carries no version yet is told as
+    // well, so a fresh install reads the current notice once.
     private void maybeAnnounceUpdate()
     {
         if (updateChecked)
@@ -145,10 +150,8 @@ public class BetterDriftNetPlugin extends Plugin
             .build());
     }
 
-    /**
-     * One-time repair of settings an earlier release left wrong, gated so it
-     * never overrides a choice the user has since made.
-     */
+    // One-time repair of settings an earlier release left wrong, gated so it never overrides a
+    // choice the user has since made.
     private void migrateOnce()
     {
         if (MIGRATION_VERSION.equals(configManager.getConfiguration(CONFIG_GROUP, MIGRATION_KEY)))
@@ -162,8 +165,9 @@ public class BetterDriftNetPlugin extends Plugin
         // stored value, then write it back so the panel shows it.
         if (STALE_ALLOW_LIST.equals(config.stillMovableItems()))
         {
-            configManager.unsetConfiguration(CONFIG_GROUP, ALLOW_LIST_KEY);
-            configManager.setConfiguration(CONFIG_GROUP, ALLOW_LIST_KEY, config.stillMovableItems());
+            configManager.unsetConfiguration(CONFIG_GROUP, BetterDriftNetConfig.STILL_MOVABLE_ITEMS_KEY);
+            configManager.setConfiguration(CONFIG_GROUP, BetterDriftNetConfig.STILL_MOVABLE_ITEMS_KEY,
+                config.stillMovableItems());
         }
 
         // Last, so a step above can still read what it retires.
@@ -177,8 +181,13 @@ public class BetterDriftNetPlugin extends Plugin
     public void configure(Binder binder)
     {
         // The feature and its overlays inject each other; an explicit binding
-        // stops Guice from failing on the cycle with a just-in-time one.
+        // stops Guice from failing on the cycle with a just-in-time one. The
+        // feature's components are bound the same way.
         binder.bind(DriftNetFeature.class);
+        binder.bind(NetTracker.class);
+        binder.bind(ShoalTracker.class);
+        binder.bind(DialogGuard.class);
+        binder.bind(CloseGuard.class);
     }
 
     @Provides

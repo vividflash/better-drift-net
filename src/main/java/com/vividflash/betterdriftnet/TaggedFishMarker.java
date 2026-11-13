@@ -24,7 +24,7 @@
  */
 package com.vividflash.betterdriftnet;
 
-/** How a hidden tagged shoal is marked. */
+// How a hidden tagged shoal is marked.
 public enum TaggedFishMarker
 {
     OFF("Off"),

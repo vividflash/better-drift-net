@@ -25,14 +25,14 @@ removed menu options are silent.
 - **Block early harvest**: removes `Harvest` on a net holding fewer fish than
   **Min fish to harvest**, default `8`.
 - **Prioritize untagged fish**: where shoals overlap, the untagged one takes
-  left-click.
+  left-click. Default `off`.
 - **Show net clickbox**: outlines where each net accepts clicks, in the
-  **Net clickbox** colour.
+  **Net clickbox colour**.
 - **Tagged fish hiding**: a shoal you have prodded is not drawn and has no
   menu entries until it reaches a net or its tag expires. **Tag lasts** sets
   how long that is, default `50` ticks.
 - **Tagged fish marking**: marks where a hidden shoal is, `Off`, `Hull` or
-  `Tile`, in the **Tagged fish colour**.
+  `Tile`, default `Hull`, in the **Tagged fish colour**.
 
 **Gear and supplies**
 
@@ -44,7 +44,8 @@ removed menu options are silent.
   `*trident*, *harpoon*`.
 - **Mark low numulite**: red inventory mark in the hunting zone while your
   stack is under 5.
-- **Trident warning guard**: on the deep-water dialog, highlights the
-  wield-anyway line green and blocks `Play it safe.`, by mouse and number key.
+- **Trident warning guard**: on the deep-water dialog in the hunting zone,
+  highlights the wield-anyway line green and blocks `Play it safe.`, by mouse
+  and number key.
 - **Tunnel dialog guard**: on the tunnel's already-paid dialog, highlights
   `Enter instance.` green and blocks `Don't enter.`, by mouse and number key.

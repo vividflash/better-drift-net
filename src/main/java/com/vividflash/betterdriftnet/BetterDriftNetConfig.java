@@ -38,119 +38,8 @@ public interface BetterDriftNetConfig extends Config
 {
     String GROUP = "betterdriftnet";
 
-    @ConfigSection(
-        name = "Interface",
-        description = "",
-        position = 20,
-        closedByDefault = true
-    )
-    String interfaceSection = "interfaceSection";
-
-    @ConfigSection(
-        name = "Nets",
-        description = "",
-        position = 30,
-        closedByDefault = true
-    )
-    String netsSection = "netsSection";
-
-    @ConfigItem(
-        keyName = "hideTaggedFish",
-        name = "Tagged fish hiding",
-        description = "A tagged shoal is not drawn and has no menu entries until its tag expires.",
-        section = netsSection,
-        position = 30
-    )
-    default boolean hideTaggedFish()
-    {
-        return true;
-    }
-
-    @ConfigItem(
-        keyName = "taggedFishMarker",
-        name = "Tagged fish marking",
-        description = "",
-        section = netsSection,
-        position = 40
-    )
-    default TaggedFishMarker taggedFishMarker()
-    {
-        return TaggedFishMarker.HULL;
-    }
-
-    @Alpha
-    @ConfigItem(
-        keyName = "taggedFishColour",
-        name = "Tagged fish colour",
-        description = "",
-        section = netsSection,
-        position = 50
-    )
-    default Color taggedFishColour()
-    {
-        return new Color(255, 255, 255, 120);
-    }
-
-    @ConfigItem(
-        keyName = "prioritizeUntaggedFish",
-        name = "Prioritize untagged fish",
-        description = "Where shoals overlap, the untagged one takes left-click.",
-        section = netsSection,
-        position = 60
-    )
-    default boolean prioritizeUntaggedFish()
-    {
-        return false;
-    }
-
-
-
-    @ConfigItem(
-        keyName = "tagTimeoutTicks",
-        name = "Tag lasts",
-        description = "How long a prodded shoal counts as tagged. Should match how long it stays agitated in game.",
-        section = netsSection,
-        position = 70
-    )
-    @Range(min = 10, max = 100)
-    @Units(Units.TICKS)
-    default int tagTimeoutTicks()
-    {
-        return 50;
-    }
-
-    @ConfigItem(
-        keyName = "showNetClickbox",
-        name = "Show net clickbox",
-        description = "",
-        section = netsSection,
-        position = 80
-    )
-    default boolean showNetClickbox()
-    {
-        return true;
-    }
-
-    @Alpha
-    @ConfigItem(
-        keyName = "netClickbox",
-        name = "Net clickbox",
-        description = "",
-        section = netsSection,
-        position = 90
-    )
-    default Color netClickbox()
-    {
-        return new Color(255, 255, 255, 100);
-    }
-
-    @ConfigSection(
-        name = "Gear and supplies",
-        description = "",
-        position = 40,
-        closedByDefault = true
-    )
-    String gearSection = "gearSection";
+    // The fish-move allow list, also read by the migration and the config-change handler.
+    String STILL_MOVABLE_ITEMS_KEY = "stillMovableItems";
 
     @ConfigItem(
         keyName = "showBlockMessages",
@@ -162,6 +51,14 @@ public interface BetterDriftNetConfig extends Config
     {
         return true;
     }
+
+    @ConfigSection(
+        name = "Interface",
+        description = "",
+        position = 20,
+        closedByDefault = true
+    )
+    String interfaceSection = "interfaceSection";
 
     @ConfigItem(
         keyName = "blockClaimOption",
@@ -200,7 +97,7 @@ public interface BetterDriftNetConfig extends Config
     }
 
     @ConfigItem(
-        keyName = "stillMovableItems",
+        keyName = STILL_MOVABLE_ITEMS_KEY,
         name = "Still movable items",
         description = "Comma-separated, * wildcards, case-insensitive.",
         section = interfaceSection,
@@ -223,10 +120,18 @@ public interface BetterDriftNetConfig extends Config
         return true;
     }
 
+    @ConfigSection(
+        name = "Nets",
+        description = "",
+        position = 30,
+        closedByDefault = true
+    )
+    String netsSection = "netsSection";
+
     @ConfigItem(
         keyName = "blockEarlyHarvest",
         name = "Block early harvest",
-        description = "Removes the 'Harvest' option on a net under the threshold. At or above it the entry is left as the game orders it.",
+        description = "No 'Harvest' on a net under Min fish to harvest.",
         section = netsSection,
         position = 10
     )
@@ -249,6 +154,102 @@ public interface BetterDriftNetConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "hideTaggedFish",
+        name = "Tagged fish hiding",
+        description = "A tagged shoal is not drawn and has no menu entries until its tag expires.",
+        section = netsSection,
+        position = 30
+    )
+    default boolean hideTaggedFish()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "taggedFishMarker",
+        name = "Tagged fish marking",
+        description = "Needs Tagged fish hiding.",
+        section = netsSection,
+        position = 40
+    )
+    default TaggedFishMarker taggedFishMarker()
+    {
+        return TaggedFishMarker.HULL;
+    }
+
+    @Alpha
+    @ConfigItem(
+        keyName = "taggedFishColour",
+        name = "Tagged fish colour",
+        description = "",
+        section = netsSection,
+        position = 50
+    )
+    default Color taggedFishColour()
+    {
+        return new Color(255, 255, 255, 120);
+    }
+
+    @ConfigItem(
+        keyName = "prioritizeUntaggedFish",
+        name = "Prioritize untagged fish",
+        description = "Where shoals overlap, the untagged one takes left-click.",
+        section = netsSection,
+        position = 60
+    )
+    default boolean prioritizeUntaggedFish()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "tagTimeoutTicks",
+        name = "Tag lasts",
+        description = "Match how long a shoal stays agitated in game.",
+        section = netsSection,
+        position = 70
+    )
+    @Range(min = 10, max = 100)
+    @Units(Units.TICKS)
+    default int tagTimeoutTicks()
+    {
+        return 50;
+    }
+
+    @ConfigItem(
+        keyName = "showNetClickbox",
+        name = "Show net clickbox",
+        description = "",
+        section = netsSection,
+        position = 80
+    )
+    default boolean showNetClickbox()
+    {
+        return true;
+    }
+
+    @Alpha
+    @ConfigItem(
+        keyName = "netClickbox",
+        name = "Net clickbox colour",
+        description = "",
+        section = netsSection,
+        position = 90
+    )
+    default Color netClickbox()
+    {
+        return new Color(255, 255, 255, 100);
+    }
+
+    @ConfigSection(
+        name = "Gear and supplies",
+        description = "",
+        position = 40,
+        closedByDefault = true
+    )
+    String gearSection = "gearSection";
+
+    @ConfigItem(
         keyName = "tridentWarningGuard",
         name = "Trident warning guard",
         description = "Deep-water dialog in the hunting zone: wield-anyway line green, \"Play it safe.\" blocked by mouse and number key.",
@@ -263,7 +264,7 @@ public interface BetterDriftNetConfig extends Config
     @ConfigItem(
         keyName = "highlightUnequippedTrident",
         name = "Highlight unequipped trident",
-        description = "",
+        description = "Green inventory mark in the hunting zone while none is wielded.",
         section = gearSection,
         position = 20
     )

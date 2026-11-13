@@ -25,18 +25,15 @@
 package com.vividflash.betterdriftnet.features;
 
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Graphics2D;
-import java.awt.Rectangle;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.widgets.WidgetItem;
 import net.runelite.client.ui.overlay.WidgetItemOverlay;
 
-/**
- * Highlights the Numulite stack in the inventory. Registered by
- * {@link DriftNetFeature}. Matched by item id, not name.
- */
+// Highlights the Numulite stack in the inventory. Registered by DriftNetFeature.
 @Singleton
 public class DriftNetNumuliteOverlay extends WidgetItemOverlay
 {
@@ -52,24 +49,27 @@ public class DriftNetNumuliteOverlay extends WidgetItemOverlay
         showOnInventory();
     }
 
+    // The inherited render lays out every inventory item each frame, so skip it outside the zone
+    // and while no low stack is held.
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        if (!feature.isInFishingZone() || !feature.isMarkLowNumulite() || !feature.isLowNumuliteHeld())
+        {
+            return null;
+        }
+        return super.render(graphics);
+    }
+
     @Override
     public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
     {
-        if (itemId != ItemID.FOSSIL_NUMULITE || !feature.isInFishingZone()
-            || !feature.isMarkLowNumulite()
+        if (itemId != ItemID.FOSSIL_NUMULITE
             || widgetItem.getQuantity() >= DriftNetFeature.BANKING_FEE)
         {
             return;
         }
 
-        Rectangle bounds = widgetItem.getCanvasBounds();
-        if (bounds == null)
-        {
-            return;
-        }
-        graphics.setColor(FILL);
-        graphics.fill(bounds);
-        graphics.setColor(OUTLINE);
-        graphics.draw(bounds);
+        ItemHighlight.draw(graphics, widgetItem, FILL, OUTLINE);
     }
 }
